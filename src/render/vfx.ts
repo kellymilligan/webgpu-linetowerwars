@@ -83,6 +83,7 @@ export class Vfx {
   private tmpA = new Vector3();
   /** The player's own lane, which gets the full treatment when busy. */
   focusLane = 0;
+  private lastPillar = new Map<number, number>();
 
   clear() {
     for (const e of this.effects) if (!e.shared) e.mat.dispose();
@@ -139,9 +140,15 @@ export class Vfx {
         case 'heal':
           this.ring(this.p(e.lane, e.x, e.y, 0.08), e.radius, '#e8d77a', 0.7, 0.8);
           break;
-        case 'leak':
-          this.pillar(laneCentreX(e.lane), toWorldZ(LANE_H + 1), '#ff3b2a');
+        case 'leak': {
+          // One pillar per keep at a time; a flood of leaks shouldn't stack into a column.
+          const now = performance.now();
+          if (now - (this.lastPillar.get(e.lane) ?? 0) > 400) {
+            this.lastPillar.set(e.lane, now);
+            this.pillar(laneCentreX(e.lane), toWorldZ(LANE_H + 1), '#ff3b2a');
+          }
           break;
+        }
       }
     }
   }

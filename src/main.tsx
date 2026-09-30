@@ -3,6 +3,7 @@ import { Controller } from './app/controller';
 import { webgpuUsable } from './render/capabilities';
 import { SceneView } from './render/scene';
 import { SENDS, TOWER_KINDS } from './sim';
+import { createBrain } from './sim/bot';
 import type { TowerKind } from './sim';
 import { App } from './ui/App';
 import { HOTKEY } from './ui/format';
@@ -38,7 +39,15 @@ async function main() {
   requestAnimationFrame(loop);
 
   // Debug handle for headless screenshots and poking at the sim.
-  (window as unknown as { ltw: unknown }).ltw = { ctl, view };
+  (window as unknown as { ltw: unknown }).ltw = {
+    ctl,
+    view,
+    /** Hands your seat to a bot (for testing and screenshots). */
+    autoplay: () => {
+      ctl.state.players[ctl.me].bot = createBrain(ctl.state.rng);
+    },
+  };
+  if (params.has('autoplay')) ctl.state.players[ctl.me].bot = createBrain(ctl.state.rng);
 }
 
 const KIND_BY_KEY = Object.fromEntries(TOWER_KINDS.map((k) => [`Key${HOTKEY[k]}`, k])) as Record<string, TowerKind>;

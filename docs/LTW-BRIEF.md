@@ -1,6 +1,9 @@
 # Line Tower Wars: brief
 
-Status: **pre-design, initial research done.** This captures our current understanding and the
+Status: **decided. See `docs/DESIGN.md` for the agreed direction.** This
+brief is kept for background.
+
+Previously: pre-design, initial research done. This captures our current understanding and the
 questions to settle with Kelly before building. The mechanics below come from
 memory of the WC3 map(s). There were many versions, and exact numbers varied,
 so treat specifics as approximate.
