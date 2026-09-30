@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "siegeline",
+  "main": "server/index.ts",
+  "compatibility_date": "2025-09-01",
+  // The built game (npm run build) is served as static assets; everything
+  // under /parties/room/<code> goes to that room's Durable Object.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "Room", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }]
+}

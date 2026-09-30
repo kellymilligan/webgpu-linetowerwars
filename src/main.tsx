@@ -2,7 +2,8 @@ import { render } from 'preact';
 import { Controller } from './app/controller';
 import { webgpuUsable } from './render/capabilities';
 import { SceneView } from './render/scene';
-import { SENDS, TOWER_KINDS } from './sim';
+import { createGame, SENDS, TOWER_KINDS } from './sim';
+import { joinRoom } from './net/socket';
 import { createBrain } from './sim/bot';
 import type { TowerKind } from './sim';
 import { App } from './ui/App';
@@ -18,9 +19,17 @@ async function main() {
   const view = new SceneView(canvas, forceWebGL);
   await view.init();
 
+  const room = params.get('room');
   const seed = params.get('seed');
-  const ctl = (!seed && Controller.fromSave()) || new Controller();
-  if (seed) ctl.newGame(seed);
+  let ctl: Controller;
+  if (room) {
+    // Multiplayer: a quiet placeholder realm shows behind the lobby until the war starts.
+    ctl = new Controller(createGame('council', { humans: [] }));
+    ctl.attachNet(joinRoom(room.toLowerCase()));
+  } else {
+    ctl = (!seed && Controller.fromSave()) || new Controller();
+    if (seed) ctl.newGame(seed);
+  }
   ctl.focusRequest = ctl.me;
 
   render(<App ctl={ctl} backend={view.backend} />, uiRoot);
@@ -44,10 +53,11 @@ async function main() {
     view,
     /** Hands your seat to a bot (for testing and screenshots). */
     autoplay: () => {
-      ctl.state.players[ctl.me].bot = createBrain(ctl.state.rng);
+      // Local only: in a room this would desync from the server.
+      if (!ctl.net) ctl.state.players[ctl.me].bot = createBrain(ctl.state.rng);
     },
   };
-  if (params.has('autoplay')) ctl.state.players[ctl.me].bot = createBrain(ctl.state.rng);
+  if (params.has('autoplay') && !room) ctl.state.players[ctl.me].bot = createBrain(ctl.state.rng);
 }
 
 const KIND_BY_KEY = Object.fromEntries(TOWER_KINDS.map((k) => [`Key${HOTKEY[k]}`, k])) as Record<string, TowerKind>;

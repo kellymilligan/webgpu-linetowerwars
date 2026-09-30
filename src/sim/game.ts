@@ -46,16 +46,26 @@ export interface GameOptions {
   /** Player ids controlled by humans; the rest are bots. */
   humans?: number[];
   players?: number;
+  /**
+   * Multiplayer seats: a name and colour for each human seat, null for a bot.
+   * Humans come from here instead of `humans`; bots take the unused house colours.
+   */
+  seats?: ({ name: string; colour: string } | null)[];
 }
 
 export function createGame(seed: string, opts: GameOptions = {}): GameState {
   const count = opts.players ?? 8;
-  const humans = new Set(opts.humans ?? [0]);
+  const seats = opts.seats;
+  const humans = new Set(seats ? seats.flatMap((x, i) => (x ? [i] : [])) : (opts.humans ?? [0]));
   const rng = seedRng(seed);
+  const taken = new Set(seats?.flatMap((x) => (x ? [x.colour] : [])) ?? []);
+  const spare = HOUSES.filter((h) => !taken.has(h.colour));
+  let nextSpare = 0;
   const players: Player[] = [];
   const lanes: Lane[] = [];
   for (let i = 0; i < count; i++) {
-    const house = HOUSES[i];
+    const seat = seats?.[i];
+    const house = seat ?? (seats ? { name: HOUSES[i].name, colour: spare[nextSpare++ % spare.length].colour } : HOUSES[i]);
     const stock = {} as Record<SendId, number>;
     const stockTimer = {} as Record<SendId, number>;
     for (const sd of SENDS) {

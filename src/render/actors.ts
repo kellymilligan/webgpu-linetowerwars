@@ -17,6 +17,7 @@ export class Actors {
   private hpBack = new Batch(new PlaneGeometry(1, 1), new MeshBasicMaterial({ color: '#ffffff', depthTest: false, transparent: true, opacity: 0.75 }), 64, false);
   private hpFill = new Batch(new PlaneGeometry(1, 1), new MeshBasicMaterial({ color: '#ffffff', depthTest: false }), 64, false);
   private houses: Color[] = [];
+  private housesKey = '';
   private yaw = new Map<number, number>();
   private aim = new Map<number, number>();
   private m = new Matrix4();
@@ -43,7 +44,12 @@ export class Actors {
   }
 
   sync(s: GameState, alpha: number, time: number, camQuat: Quaternion, dt: number) {
-    if (this.houses.length !== s.players.length) this.houses = s.players.map((p) => new Color(p.colour));
+    // Re-read colours when they change (e.g. a multiplayer snapshot replaces the lobby's placeholder realm).
+    const key = s.players.map((p) => p.colour).join();
+    if (key !== this.housesKey) {
+      this.housesKey = key;
+      this.houses = s.players.map((p) => new Color(p.colour));
+    }
 
     // Towers.
     this.towers.begin();

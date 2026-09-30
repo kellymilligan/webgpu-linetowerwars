@@ -13,6 +13,7 @@ import {
   tracePath,
 } from '../sim';
 import type { Command, GameEvent, GameState, PlaceCheck, SendId, TowerKind } from '../sim';
+import type { NetGame } from '../net/client';
 
 export type Selection = { kind: 'tower'; id: number } | { kind: 'tile'; lane: number; x: number; y: number } | null;
 
@@ -50,6 +51,9 @@ export class Controller {
   confirmNew = false;
   version = 0;
   runId = 0;
+  /** Set when playing in a multiplayer room; the server then owns the clock. */
+  net: NetGame | null = null;
+  private netSnapshots = 0;
   /** Lane the camera should glide to (consumed by the scene). */
   focusRequest: number | null = null;
   private listeners = new Set<() => void>();
@@ -77,6 +81,11 @@ export class Controller {
   }
 
   newGame(seed = randomSeed()) {
+    if (this.net) {
+      // "New" in a room means leaving it for a solo war.
+      location.search = '';
+      return;
+    }
     this.state = createGame(seed);
     this.runId++;
     this.selection = null;
@@ -109,7 +118,36 @@ export class Controller {
     for (const fn of this.listeners) fn();
   }
 
+  /** Hooks this controller to a room; the net session drives state from then on. */
+  attachNet(net: NetGame) {
+    this.net = net;
+    this.speed = 1;
+    net.onNotice = (t) => this.showToast(t);
+    net.onChange = () => {
+      this.me = net.seat;
+      if (net.state && net.snapshots !== this.netSnapshots) {
+        const first = this.netSnapshots === 0 || this.state !== net.state;
+        this.netSnapshots = net.snapshots;
+        this.state = net.state;
+        this.runId++;
+        this.selection = null;
+        this.hover = null;
+        this.events = [];
+        if (first) this.focusRequest = this.me;
+      }
+      this.notify(true);
+    };
+  }
+
   dispatch(cmd: Command): boolean {
+    if (this.net) {
+      // Intent only: the server validates it and it lands with the next turn.
+      if (!this.net.state || this.net.phase !== 'playing') return false;
+      this.net.submit(cmd);
+      if (cmd.type === 'sell') this.selection = null;
+      this.notify(true);
+      return true;
+    }
     const { result, events } = applyCommand(this.state, cmd);
     if (!result.ok) {
       this.showToast(result.reason);
@@ -155,12 +193,17 @@ export class Controller {
   }
 
   setSpeed(speed: Speed) {
+    if (this.net) return;
     this.speed = speed;
     this.paused = false;
     this.notify(true);
   }
 
   togglePause() {
+    if (this.net) {
+      if (this.net.host) this.net.setPaused(!this.net.paused);
+      return;
+    }
     this.paused = !this.paused;
     this.notify(true);
   }
@@ -177,6 +220,7 @@ export class Controller {
 
   /** Runs fixed sim ticks for real elapsed time; returns interpolation alpha. */
   tick(dtReal: number): number {
+    if (this.net) return this.tickNet(dtReal);
     const s = this.state;
     if (s.phase === 'over' || this.paused) {
       this.acc = 0;
@@ -202,6 +246,24 @@ export class Controller {
       this.notify(isOver(s));
     }
     return this.acc / DT;
+  }
+
+  private tickNet(dtReal: number): number {
+    const net = this.net!;
+    if (!net.state) {
+      if (this.dirty) this.notify();
+      return 1;
+    }
+    const { events, alpha } = net.advance(dtReal);
+    if (events.length) {
+      this.events.push(...events);
+      this.narrate(events);
+      if (events.some((e) => e.type === 'built' || e.type === 'sold' || e.type === 'towerDestroyed' || e.type === 'upgraded')) {
+        this.hover = this.hover ? this.computeHover(this.hover.lane, this.hover.x, this.hover.y) : null;
+      }
+      this.notify(events.some((e) => e.type === 'gameOver'));
+    } else if (this.dirty) this.notify();
+    return alpha;
   }
 
   drainEvents(): GameEvent[] {
@@ -320,6 +382,7 @@ export class Controller {
   }
 
   save(force = false) {
+    if (this.net) return;
     const now = performance.now();
     if (!force && now - this.lastSave < 4000) return;
     this.lastSave = now;

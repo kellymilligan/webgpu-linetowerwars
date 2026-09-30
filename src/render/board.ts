@@ -40,6 +40,7 @@ export class Board {
   private keeps = new BatchSet();
   private fallen: boolean[] = [];
   private houses: Color[] = [];
+  private housesKey = '';
 
   constructor() {
     // Ground: mottled moorland.
@@ -129,7 +130,11 @@ export class Board {
 
   /** Keeps are drawn per frame so they can show their house colour and fall. */
   update(houses: string[], fallen: boolean[], time: number) {
-    if (this.houses.length !== houses.length) this.houses = houses.map((h) => new Color(h));
+    const key = houses.join();
+    if (key !== this.housesKey) {
+      this.housesKey = key;
+      this.houses = houses.map((h) => new Color(h));
+    }
     this.fallen = fallen;
     const K = this.keeps;
     K.begin();

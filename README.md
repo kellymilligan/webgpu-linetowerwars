@@ -5,9 +5,11 @@ It's set in a gritty medieval world of warring houses and rendered in
 isometric 3D with three.js and WebGPU (with a WebGL 2 fallback). It's the
 sister project to [webgpu-gemtd](https://github.com/kellymilligan/webgpu-gemtd).
 
-**Status:** v0.1 grey box. You play one house against 7 bot lords in an
-8-player free-for-all. See [`docs/DESIGN.md`](docs/DESIGN.md) for the rules
-and direction.
+**Status:** v0.2 grey box. You play one house against 7 bot lords in an
+8-player free-for-all, solo or with friends in private rooms (bots fill the
+empty seats).
+- [`docs/DESIGN.md`](docs/DESIGN.md): rules and direction.
+- [`docs/MULTIPLAYER.md`](docs/MULTIPLAYER.md): how the netcode works.
 
 ## Run
 
@@ -16,9 +18,14 @@ npm install
 npm run dev          # http://localhost:5173
 npm test             # sim tests
 npm run balance -- 6 # headless 8-bot matches (bots play worse than people)
+
+# Multiplayer, locally
+npm run build && npm run server   # rooms on :8787 (Cloudflare Worker via wrangler)
+npm run dev                       # then click "Multiplayer" and share the link
 ```
 
 URL params:
+- `?room=code` joins a multiplayer room.
 - `?seed=abc` starts a fixed seed.
 - `?renderer=webgl|webgpu` forces a backend.
 - `?autoplay` hands your seat to a bot.
@@ -62,5 +69,6 @@ The game autosaves, and refreshing resumes the match.
 - `src/render`: the three.js scene.
 - `src/ui`: Preact UI.
 - `src/app`: the controller that bridges them.
+- `src/net`, `server/`: multiplayer (lockstep protocol, room logic, Cloudflare Worker).
 - `scripts/`: balance runner and screenshots.
 - `reference/gemtd/`: files carried over from Gem TD. Not compiled.

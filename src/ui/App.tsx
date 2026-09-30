@@ -17,11 +17,22 @@ import {
 import type { GameState } from '../sim';
 import { GLYPH, HOTKEY, mmss, SHORT } from './format';
 import { WorldLayer } from './World';
+import { Lobby } from './Lobby';
+import { newRoomCode } from '../net/socket';
 
 export function App({ ctl, backend }: { ctl: Controller; backend: string }) {
   const [, setV] = useState(0);
   useEffect(() => ctl.subscribe(() => setV(ctl.version)), [ctl]);
   const s = ctl.state;
+  if (ctl.net && (!ctl.net.state || ctl.net.phase === 'lobby')) {
+    // The council: just the realm in the background and the lobby.
+    return (
+      <>
+        <Lobby ctl={ctl} />
+        <div class="backend">{backend}</div>
+      </>
+    );
+  }
   return (
     <>
       <WorldLayer ctl={ctl} s={s} />
@@ -34,6 +45,7 @@ export function App({ ctl, backend }: { ctl: Controller; backend: string }) {
       {ctl.toast && <Toast key={ctl.toast.id} text={ctl.toast.text} />}
       {ctl.confirmNew && <ConfirmNew ctl={ctl} />}
       {s.phase === 'over' && <GameOver ctl={ctl} s={s} />}
+      {ctl.net?.state && ctl.net.paused && <div class="toast">Paused by the host</div>}
       <div class="backend">
         {backend} · seed {s.seed}
       </div>
@@ -42,6 +54,29 @@ export function App({ ctl, backend }: { ctl: Controller; backend: string }) {
 }
 
 function Controls({ ctl }: { ctl: Controller }) {
+  const net = ctl.net;
+  if (net) {
+    return (
+      <div class="controls panel">
+        <span class="title">Siegeline</span>
+        <span class="dim small">
+          Room <b>{new URLSearchParams(location.search).get('room')}</b>
+          {!net.connected && <span class="bad"> · reconnecting…</span>}
+        </span>
+        {net.host && net.state && (
+          <button class={`icon ${net.paused ? 'on' : ''}`} onClick={() => ctl.togglePause()} title="Pause for everyone (P)">
+            ❚❚
+          </button>
+        )}
+        <button class="icon" onClick={() => ctl.focusLane(ctl.me)} title="Home (Space)">
+          ⌂
+        </button>
+        <button class="icon" onClick={() => (location.search = '')}>
+          Leave
+        </button>
+      </div>
+    );
+  }
   return (
     <div class="controls panel">
       <span class="title">Siegeline</span>
@@ -64,6 +99,9 @@ function Controls({ ctl }: { ctl: Controller }) {
         }}
       >
         New
+      </button>
+      <button class="icon" onClick={() => (location.search = `?room=${newRoomCode()}`)} title="Open a war council and invite friends">
+        Multiplayer
       </button>
     </div>
   );
@@ -120,6 +158,8 @@ function Roster({ ctl, s }: { ctl: Controller; s: GameState }) {
           <div>
             <div class="lname">
               {p.id === ctl.me ? 'You' : p.name}
+              {ctl.net && p.bot && <span class="chip">bot</span>}
+              {ctl.net && !p.bot && ctl.net.members.find((m) => m.seat === p.id)?.connected === false && <span class="chip">away</span>}
               {p.alive && p.id === target && <span class="arrow out">your target</span>}
               {p.alive && p.id === from && <span class="arrow in">sends at you</span>}
             </div>
@@ -296,9 +336,22 @@ function GameOver({ ctl, s }: { ctl: Controller; s: GameState }) {
           </tbody>
         </table>
         <div class="actions">
-          <button class="primary" onClick={() => ctl.newGame()}>
-            New war
-          </button>
+          {ctl.net ? (
+            <>
+              {ctl.net.host ? (
+                <button class="primary" onClick={() => ctl.net!.toLobby()}>
+                  Back to the council
+                </button>
+              ) : (
+                <span class="dim">Waiting for the host…</span>
+              )}
+              <button onClick={() => (location.search = '')}>Leave</button>
+            </>
+          ) : (
+            <button class="primary" onClick={() => ctl.newGame()}>
+              New war
+            </button>
+          )}
         </div>
       </div>
     </div>
