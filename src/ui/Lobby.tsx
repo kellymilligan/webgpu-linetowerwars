@@ -33,7 +33,10 @@ export function Lobby({ ctl }: { ctl: Controller }) {
         ) : !net.connected ? (
           <p class="dim">Riding to the council…</p>
         ) : (
-          <p class="dim">Share this link. Empty seats are filled by bot lords when the host begins.</p>
+          <p class="dim">
+            Share this link.{' '}
+            {net.fillBots ? 'Empty seats are filled by bot lords when the host begins.' : 'No bots: the realm has one holding per player.'}
+          </p>
         )}
         <div class="linkrow">
           <input readOnly value={link} onFocus={(e) => (e.target as HTMLInputElement).select()} />
@@ -70,17 +73,21 @@ export function Lobby({ ctl }: { ctl: Controller }) {
             return (
               <div key={i} class={`seat ${m ? '' : 'empty'} ${m?.seat === net.seat ? 'me' : ''}`}>
                 <i class="swatch" style={{ background: m?.colour ?? 'rgba(255,255,255,0.12)' }} />
-                <span>{m ? m.name : 'Bot lord'}</span>
+                <span>{m ? m.name : net.fillBots ? 'Bot lord' : 'Open seat'}</span>
                 {m?.host && <span class="chip">host</span>}
                 {m && !m.connected && <span class="chip">away</span>}
               </div>
             );
           })}
         </div>
+        <label class={`toggle ${net.host ? '' : 'readonly'}`} title={net.host ? '' : 'The host decides'}>
+          <input type="checkbox" checked={net.fillBots} disabled={!net.host} onChange={(e) => net.setFillBots((e.target as HTMLInputElement).checked)} />
+          <span>Fill empty seats with bot lords</span>
+        </label>
         <div class="actions">
           {net.host ? (
-            <button class="primary" disabled={!net.connected} onClick={() => net.start()}>
-              Begin the war
+            <button class="primary" disabled={!net.connected || (!net.fillBots && net.members.length < 2)} onClick={() => net.start()}>
+              Begin the war{!net.fillBots && ` · ${net.members.length} ${net.members.length === 1 ? 'holding' : 'holdings'}`}
             </button>
           ) : (
             <span class="dim">Waiting for the host to begin…</span>

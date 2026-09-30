@@ -54,7 +54,7 @@ export interface GameOptions {
 }
 
 export function createGame(seed: string, opts: GameOptions = {}): GameState {
-  const count = opts.players ?? 8;
+  const count = opts.players ?? opts.seats?.length ?? 8;
   const seats = opts.seats;
   const humans = new Set(seats ? seats.flatMap((x, i) => (x ? [i] : [])) : (opts.humans ?? [0]));
   const rng = seedRng(seed);

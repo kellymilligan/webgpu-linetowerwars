@@ -1,7 +1,7 @@
 import { Color, Group, Mesh, MeshStandardNodeMaterial, PlaneGeometry, Vector3 } from 'three/webgpu';
 import { float, fract, mix, mx_noise_float, positionWorld, smoothstep, uniform, vec3 } from 'three/tsl';
 import { GATE_ROWS, KEEP_ROWS, LANE_H, LANE_W } from '../sim/data/map';
-import { laneOriginX, LANE_GAP, toWorldZ, WORLD_MAX_X, WORLD_MIN_X } from './coords';
+import { laneCount, laneOriginX, LANE_GAP, toWorldZ, worldMaxX, worldMinX } from './coords';
 import { BatchSet, PALETTE, part, pushModel } from './parts';
 import type { Part } from './parts';
 
@@ -28,7 +28,7 @@ const DEAD_TREE: Part[] = [
 ];
 
 /**
- * Terrain and fixed architecture: a mottled moor, eight walled roads, a gate
+ * Terrain and fixed architecture: a mottled moor, a walled road per player, a gate
  * at the head of each and a keep at its foot, with pines and rocks between.
  */
 export class Board {
@@ -42,43 +42,56 @@ export class Board {
   private houses: Color[] = [];
   private housesKey = '';
 
+  private layoutGroup = new Group();
+  private groundMat = new MeshStandardNodeMaterial({ roughness: 1 });
+  private roadMat = new MeshStandardNodeMaterial({ roughness: 0.95 });
+  private cobbleMat = new MeshStandardNodeMaterial({ roughness: 0.9 });
+  private lanes = 0;
+
   constructor() {
     // Ground: mottled moorland.
-    const groundMat = new MeshStandardNodeMaterial({ roughness: 1 });
     const n = mx_noise_float(positionWorld.xz.mul(0.09)).mul(0.5).add(0.5);
     const n2 = mx_noise_float(positionWorld.xz.mul(0.5)).mul(0.5).add(0.5);
-    groundMat.colorNode = mix(this.grass.mul(0.7), this.grass.mul(1.15), n.mul(0.7).add(n2.mul(0.3)));
-    const ground = new Mesh(new PlaneGeometry(WORLD_MAX_X - WORLD_MIN_X + 120, LANE_H + 100).rotateX(-Math.PI / 2), groundMat);
-    ground.position.set((WORLD_MIN_X + WORLD_MAX_X) / 2, -0.02, 0);
-    ground.receiveShadow = true;
-    this.group.add(ground);
+    this.groundMat.colorNode = mix(this.grass.mul(0.7), this.grass.mul(1.15), n.mul(0.7).add(n2.mul(0.3)));
 
     // Road beds with a faint build grid.
-    const roadMat = new MeshStandardNodeMaterial({ roughness: 0.95 });
     const p = positionWorld.xz;
     const mud = mix(vec3(0.075, 0.06, 0.045), vec3(0.13, 0.105, 0.08), mx_noise_float(p.mul(0.8)).mul(0.5).add(0.5));
     const f = fract(p);
     const edge = f.x.min(f.y).min(float(1).sub(f.x)).min(float(1).sub(f.y));
     const line = float(1).sub(smoothstep(0.0, 0.04, edge));
-    roadMat.colorNode = mix(mud, vec3(0.3, 0.27, 0.22), line.mul(this.gridOpacity));
-    const cobbleMat = new MeshStandardNodeMaterial({ roughness: 0.9 });
-    cobbleMat.colorNode = mix(vec3(0.07, 0.068, 0.065), vec3(0.14, 0.135, 0.13), mx_noise_float(p.mul(2.2)).mul(0.5).add(0.5));
+    this.roadMat.colorNode = mix(mud, vec3(0.3, 0.27, 0.22), line.mul(this.gridOpacity));
+    this.cobbleMat.colorNode = mix(vec3(0.07, 0.068, 0.065), vec3(0.14, 0.135, 0.13), mx_noise_float(p.mul(2.2)).mul(0.5).add(0.5));
 
+    this.group.add(this.layoutGroup, this.statics.group, this.keeps.group);
+    this.layout();
+  }
+
+  /** (Re)builds ground, roads and scenery for the current lane count. */
+  layout() {
+    const count = laneCount();
+    if (count === this.lanes) return;
+    this.lanes = count;
+    for (const c of [...this.layoutGroup.children]) (c as Mesh).geometry.dispose();
+    this.layoutGroup.clear();
+    const ground = new Mesh(new PlaneGeometry(worldMaxX() - worldMinX() + 120, LANE_H + 100).rotateX(-Math.PI / 2), this.groundMat);
+    ground.position.set((worldMinX() + worldMaxX()) / 2, -0.02, 0);
+    ground.receiveShadow = true;
+    this.layoutGroup.add(ground);
     const bedH = LANE_H - GATE_ROWS - KEEP_ROWS;
-    for (let lane = 0; lane < 8; lane++) {
+    for (let lane = 0; lane < count; lane++) {
       const ox = laneOriginX(lane);
-      const bed = new Mesh(new PlaneGeometry(LANE_W, bedH).rotateX(-Math.PI / 2), roadMat);
+      const bed = new Mesh(new PlaneGeometry(LANE_W, bedH).rotateX(-Math.PI / 2), this.roadMat);
       bed.position.set(ox + LANE_W / 2, 0.005, toWorldZ(GATE_ROWS + bedH / 2));
       bed.receiveShadow = true;
-      const gate = new Mesh(new PlaneGeometry(LANE_W, GATE_ROWS).rotateX(-Math.PI / 2), cobbleMat);
+      const gate = new Mesh(new PlaneGeometry(LANE_W, GATE_ROWS).rotateX(-Math.PI / 2), this.cobbleMat);
       gate.position.set(ox + LANE_W / 2, 0.006, toWorldZ(GATE_ROWS / 2));
       gate.receiveShadow = true;
-      const keep = new Mesh(new PlaneGeometry(LANE_W, KEEP_ROWS + 5).rotateX(-Math.PI / 2), cobbleMat);
+      const keep = new Mesh(new PlaneGeometry(LANE_W, KEEP_ROWS + 5).rotateX(-Math.PI / 2), this.cobbleMat);
       keep.position.set(ox + LANE_W / 2, 0.006, toWorldZ(LANE_H - KEEP_ROWS + (KEEP_ROWS + 5) / 2));
       keep.receiveShadow = true;
-      this.group.add(bed, gate, keep);
+      this.layoutGroup.add(bed, gate, keep);
     }
-    this.group.add(this.statics.group, this.keeps.group);
     this.buildStatics();
   }
 
@@ -87,7 +100,7 @@ export class Board {
     S.begin();
     const white = new Color('#ffffff');
     const rand = mulberry(7);
-    for (let lane = 0; lane < 8; lane++) {
+    for (let lane = 0; lane < this.lanes; lane++) {
       const ox = laneOriginX(lane);
       // Side walls with posts.
       for (const wx of [ox - 0.25, ox + LANE_W + 0.25]) {
@@ -116,13 +129,13 @@ export class Board {
     }
     // Forest fringe beyond the play area.
     for (let i = 0; i < 700; i++) {
-      const x = WORLD_MIN_X - 40 + rand() * (WORLD_MAX_X - WORLD_MIN_X + 80);
+      const x = worldMinX() - 40 + rand() * (worldMaxX() - worldMinX() + 80);
       const far = rand() < 0.5;
       const z = far ? toWorldZ(-6 - rand() * 30) : toWorldZ(LANE_H + 9 + rand() * 30);
       pushModel(S, PINE, x, 0, z, rand() * 6, 0.8 + rand() * 1.2, new Color().setHSL(0.27 + rand() * 0.07, 0.22, 0.1 + rand() * 0.06));
     }
     for (let i = 0; i < 90; i++) {
-      const x = rand() < 0.5 ? WORLD_MIN_X - rand() * 30 : WORLD_MAX_X + rand() * 30;
+      const x = rand() < 0.5 ? worldMinX() - rand() * 30 : worldMaxX() + rand() * 30;
       pushModel(S, PINE, x, 0, toWorldZ(-5 + rand() * (LANE_H + 10)), rand() * 6, 0.8 + rand() * 1.2, new Color().setHSL(0.27 + rand() * 0.07, 0.22, 0.1 + rand() * 0.06));
     }
     S.end();

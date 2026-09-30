@@ -24,6 +24,7 @@ export class NetGame {
   phase: RoomPhase = 'lobby';
   members: SeatView[] = [];
   paused = false;
+  fillBots = true;
   connected = false;
   error: string | null = null;
   /** Latest tick the server has cleared us to simulate to. */
@@ -67,6 +68,10 @@ export class NetGame {
     this.send({ t: 'pause', paused });
   }
 
+  setFillBots(fillBots: boolean) {
+    this.send({ t: 'settings', fillBots });
+  }
+
   toLobby() {
     this.send({ t: 'toLobby' });
   }
@@ -86,6 +91,7 @@ export class NetGame {
         this.phase = msg.phase;
         this.members = msg.members;
         this.paused = msg.paused;
+        this.fillBots = msg.fillBots;
         if (msg.phase === 'lobby') this.state = null;
         break;
       case 'snapshot':

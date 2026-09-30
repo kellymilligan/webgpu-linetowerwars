@@ -33,6 +33,8 @@ export class RoomCore {
   phase: RoomPhase = 'lobby';
   game: GameState | null = null;
   paused = false;
+  /** Fill empty seats with bots; if off, the realm has one lane per human. */
+  fillBots = true;
   private members: Member[] = [];
   private byConn = new Map<string, Member>();
   private queue: { seat: number; cmd: Command }[] = [];
@@ -80,7 +82,18 @@ export class RoomCore {
         this.broadcastRoom();
         break;
       case 'start':
-        if (isHost && this.phase !== 'playing') this.start();
+        if (!isHost || this.phase === 'playing') return;
+        if (!this.fillBots && this.members.length < 2) {
+          this.io.send(conn, { t: 'reject', reason: 'Without bots you need at least two players.' });
+          return;
+        }
+        this.start();
+        break;
+      case 'settings':
+        if (isHost && this.phase === 'lobby') {
+          this.fillBots = !!msg.fillBots;
+          this.broadcastRoom();
+        }
         break;
       case 'toLobby':
         if (isHost && this.phase === 'over') {
@@ -98,7 +111,9 @@ export class RoomCore {
         }
         break;
       case 'cmd':
-        if (this.phase === 'playing' && !this.paused) this.queue.push({ seat: m.seat, cmd: msg.cmd });
+        if (this.phase !== 'playing') return;
+        if (this.paused) this.io.send(conn, { t: 'reject', reason: 'The war is paused.' });
+        else this.queue.push({ seat: m.seat, cmd: msg.cmd });
         break;
       case 'hash': {
         const mine = this.hashes.get(msg.tick);
@@ -141,7 +156,7 @@ export class RoomCore {
   }
 
   private start() {
-    const seats = Array.from({ length: MAX_SEATS }, (_, i) => {
+    const seats = Array.from({ length: this.fillBots ? MAX_SEATS : this.members.length }, (_, i) => {
       const m = this.members.find((x) => x.seat === i);
       return m ? { name: m.name, colour: m.colour } : null;
     });
@@ -218,7 +233,7 @@ export class RoomCore {
   private broadcastRoom() {
     const host = this.hostOf();
     const members: SeatView[] = this.members.map((m) => ({ seat: m.seat, name: m.name, colour: m.colour, connected: !!m.conn, host: m === host }));
-    this.io.broadcast({ t: 'room', phase: this.phase, members, paused: this.paused });
+    this.io.broadcast({ t: 'room', phase: this.phase, members, paused: this.paused, fillBots: this.fillBots });
     // Tell everyone whether they're host (it can change when the host leaves).
     for (const m of this.members) if (m.conn) this.io.send(m.conn, { t: 'welcome', seat: m.seat, host: m === host });
   }

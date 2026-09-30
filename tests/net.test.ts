@@ -109,6 +109,29 @@ describe('lockstep over a lossy-latency network', () => {
     expect(server.towers.filter((t) => t.lane < 3).length).toBeGreaterThan(10);
   });
 
+  it('without bots the realm has one lane per player, and stays in sync', () => {
+    const h = harness(3, 'nobots');
+    h.run(600);
+    const host = h.nets.find((n) => n.host)!;
+    host.setFillBots(false);
+    h.run(600);
+    expect(h.nets.every((n) => n.fillBots === false)).toBe(true);
+    host.start();
+    h.run(1000);
+    const s = h.room.game!;
+    expect(s.players.length).toBe(3);
+    expect(s.lanes.length).toBe(3);
+    expect(s.players.every((p) => p.bot === null)).toBe(true);
+    h.run(60_000, (t) => {
+      if (t % 500 !== 0) return;
+      for (const n of h.nets) n.submit({ type: 'send', player: n.seat, send: 'levies' });
+    });
+    h.room.paused = true;
+    h.run(3000);
+    for (const n of h.nets) expect(stateHash(n.state!)).toBe(stateHash(h.room.game!));
+    expect(h.room.game!.creeps.length + h.room.game!.players.reduce((a, p) => a + p.stats.kills, 0)).toBeGreaterThan(0);
+  });
+
   it('a client cannot act for another seat', () => {
     const h = harness(2, 'spoof');
     h.run(600);

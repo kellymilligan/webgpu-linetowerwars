@@ -69,11 +69,14 @@ export class BatchSet {
   readonly group = new Group();
   private batches = new Map<string, Batch>();
 
+  /** `override` draws every part with one material (e.g. translucent ghosts). */
+  constructor(private override?: Material) {}
+
   get(g: GeoKey, m: MatKey = 'matte', shadows = true): Batch {
     const key = `${g}:${m}`;
     let b = this.batches.get(key);
     if (!b) {
-      b = new Batch(GEO[g], MATS[m], 128, shadows && m !== 'glow');
+      b = new Batch(GEO[g], this.override ?? MATS[m], 128, !this.override && shadows && m !== 'glow');
       this.batches.set(key, b);
       this.group.add(b.mesh);
     }

@@ -9,6 +9,7 @@
 import { execSync } from 'node:child_process';
 
 const out = process.argv[2] ?? '.';
+const noBots = process.argv.includes('--no-bots');
 const root = execSync('npm root -g').toString().trim();
 const { chromium } = await import(`${root}/playwright/index.mjs`);
 // One browser process per player: software GL in one process starves a second page.
@@ -44,6 +45,11 @@ const who = async (p) => p.evaluate(() => ({ seat: window.ltw.ctl.net.seat, host
 console.log('A', JSON.stringify(await who(a)));
 console.log('B', JSON.stringify((await who(b)).seat));
 
+if (noBots) {
+  await a.click('.toggle input');
+  await wait(600);
+  await a.screenshot({ path: `${out}/mp-lobby-nobots.png` });
+}
 await a.click('text=Begin the war');
 await a.waitForFunction(() => window.ltw.ctl.net.state && window.ltw.ctl.net.phase === 'playing', null, { timeout: 15000 });
 await b.waitForFunction(() => window.ltw.ctl.net.state, null, { timeout: 15000 });
@@ -80,6 +86,15 @@ console.log('B state', JSON.stringify(fb));
 console.log(fa.tick === fb.tick && fa.hash === fb.hash ? 'IN SYNC' : 'MISMATCH');
 await a.evaluate(() => window.ltw.ctl.togglePause());
 await wait(4000);
+// Ghost build: order a tower while the host pauses (the server holds commands), and capture it.
+await a.evaluate(() => window.ltw.ctl.togglePause());
+await wait(1200);
+await b.evaluate(() => { const c = window.ltw.ctl; c.build(5, 12, 'archer'); c.build(6, 12, 'mangonel'); window.ltw.view.rig.focus(window.ltw.ctl.me * 17 - 12, 0, 28); });
+await wait(2500);
+await b.screenshot({ path: `${out}/mp-ghost.png` });
+console.log('guest ghosts', await b.evaluate(() => window.ltw.ctl.ghosts.length), 'lanes', await b.evaluate(() => window.ltw.ctl.state.players.length));
+await a.evaluate(() => window.ltw.ctl.togglePause());
+await wait(3000);
 await a.screenshot({ path: `${out}/mp-host.png` });
 await b.screenshot({ path: `${out}/mp-guest.png` });
 for (const b of browsers) await b.close();

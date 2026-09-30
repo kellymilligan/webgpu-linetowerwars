@@ -53,6 +53,11 @@ export class Controller {
   runId = 0;
   /** Set when playing in a multiplayer room; the server then owns the clock. */
   net: NetGame | null = null;
+  /**
+   * Builds ordered in multiplayer that the server hasn't confirmed yet. They're
+   * drawn as translucent ghosts so the ~150 ms round trip doesn't feel laggy.
+   */
+  ghosts: { lane: number; x: number; y: number; kind: TowerKind; at: number }[] = [];
   private netSnapshots = 0;
   /** Lane the camera should glide to (consumed by the scene). */
   focusRequest: number | null = null;
@@ -122,7 +127,11 @@ export class Controller {
   attachNet(net: NetGame) {
     this.net = net;
     this.speed = 1;
-    net.onNotice = (t) => this.showToast(t);
+    net.onNotice = (t) => {
+      // A rejection (e.g. not enough gold) most likely voids our pending builds.
+      this.ghosts = [];
+      this.showToast(t);
+    };
     net.onChange = () => {
       this.me = net.seat;
       if (net.state && net.snapshots !== this.netSnapshots) {
@@ -133,6 +142,7 @@ export class Controller {
         this.selection = null;
         this.hover = null;
         this.events = [];
+        this.ghosts = [];
         if (first) this.focusRequest = this.me;
       }
       this.notify(true);
@@ -144,6 +154,7 @@ export class Controller {
       // Intent only: the server validates it and it lands with the next turn.
       if (!this.net.state || this.net.phase !== 'playing') return false;
       this.net.submit(cmd);
+      if (cmd.type === 'build') this.ghosts.push({ lane: this.me, x: cmd.x, y: cmd.y, kind: cmd.kind, at: performance.now() });
       if (cmd.type === 'sell') this.selection = null;
       this.notify(true);
       return true;
@@ -255,6 +266,14 @@ export class Controller {
       return 1;
     }
     const { events, alpha } = net.advance(dtReal);
+    if (this.ghosts.length) {
+      // Confirmed builds replace their ghosts; anything unconfirmed after 2 s is dropped.
+      const now = performance.now();
+      const built = new Set(events.flatMap((e) => (e.type === 'built' && e.lane === this.me ? [`${e.x},${e.y}`] : [])));
+      const before = this.ghosts.length;
+      this.ghosts = this.ghosts.filter((g) => !built.has(`${g.x},${g.y}`) && now - g.at < 2000);
+      if (this.ghosts.length !== before) this.notify(true);
+    }
     if (events.length) {
       this.events.push(...events);
       this.narrate(events);
@@ -288,7 +307,9 @@ export class Controller {
   private computeHover(lane: number, x: number, y: number): Hover {
     const s = this.state;
     const L = s.lanes[lane];
-    if (lane !== this.me || !buildable(x, y) || L.grid[cellIndex(x, y)] !== 0) return { lane, x, y, check: null, preview: null };
+    if (lane !== this.me || !buildable(x, y) || L.grid[cellIndex(x, y)] !== 0 || this.ghosts.some((g) => g.x === x && g.y === y)) {
+      return { lane, x, y, check: null, preview: null };
+    }
     const check = checkBuild(s, this.me, x, y, this.armed ?? 'palisade');
     let preview: number[] | null = null;
     if (check.pathLength >= 0 && (check.ok || check.reason?.startsWith('Need'))) {
@@ -306,6 +327,8 @@ export class Controller {
       this.selection = { kind: 'tower', id };
       this.armed = null;
     } else if (lane === this.me && buildable(x, y)) {
+      // Already ordered here and waiting on the server.
+      if (this.ghosts.some((g) => g.x === x && g.y === y)) return;
       if (this.armed) {
         this.build(x, y, this.armed);
         return;

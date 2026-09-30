@@ -33,12 +33,14 @@ export type ClientMsg =
   | { t: 'start' }
   | { t: 'pause'; paused: boolean }
   | { t: 'toLobby' }
+  /** Host: fill empty seats with bots, or play with only the humans present. */
+  | { t: 'settings'; fillBots: boolean }
   | { t: 'cmd'; cmd: Command }
   | { t: 'hash'; tick: number; hash: number };
 
 export type ServerMsg =
   | { t: 'welcome'; seat: number; host: boolean }
-  | { t: 'room'; phase: RoomPhase; members: SeatView[]; paused: boolean }
+  | { t: 'room'; phase: RoomPhase; members: SeatView[]; paused: boolean; fillBots: boolean }
   /** Full state, e.g. at the start, on reconnect, or to repair a desync. */
   | { t: 'snapshot'; state: GameState }
   | { t: 'turn'; at: number; upTo: number; cmds: Command[] }

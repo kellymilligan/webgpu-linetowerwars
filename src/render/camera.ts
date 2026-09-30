@@ -1,6 +1,6 @@
 import { PerspectiveCamera, Vector3 } from 'three/webgpu';
 import { LANE_H } from '../sim/data/map';
-import { WORLD_MAX_X, WORLD_MIN_X } from './coords';
+import { worldMaxX, worldMinX } from './coords';
 
 /**
  * Isometric-style rig: a narrow-FOV perspective camera orbiting a ground
@@ -93,7 +93,7 @@ export class CameraRig {
   }
 
   private clampTarget() {
-    this.goalTarget.x = clamp(this.goalTarget.x, WORLD_MIN_X, WORLD_MAX_X);
+    this.goalTarget.x = clamp(this.goalTarget.x, worldMinX(), worldMaxX());
     this.goalTarget.z = clamp(this.goalTarget.z, -LANE_H / 2 - 6, LANE_H / 2 + 6);
   }
 

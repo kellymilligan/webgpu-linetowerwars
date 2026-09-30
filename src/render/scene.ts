@@ -23,7 +23,7 @@ import { cellIndex, tracePath } from '../sim/pathing';
 import { Actors } from './actors';
 import { Board } from './board';
 import { CameraRig } from './camera';
-import { fromWorld, laneCentreX, toWorldX, toWorldZ } from './coords';
+import { fromWorld, laneCentreX, laneCount, setLaneCount, toWorldX, toWorldZ } from './coords';
 import { Overlays } from './overlays';
 import { Vfx } from './vfx';
 
@@ -96,7 +96,7 @@ export class SceneView {
     this.scene.add(this.sun, this.sun.target, this.hemi);
     const g = new Color(LOOK.grass);
     this.board.grass.value.set(g.r, g.g, g.b);
-    this.scene.add(this.board.group, this.actors.towers.group, this.actors.creeps.group, this.vfx.group, this.overlays.group);
+    this.scene.add(this.board.group, this.actors.towers.group, this.actors.ghosts.group, this.actors.creeps.group, this.vfx.group, this.overlays.group);
 
     this.pipeline = new RenderPipeline(this.renderer);
     const scenePass = pass(this.scene, this.rig.camera);
@@ -183,6 +183,11 @@ export class SceneView {
 
     if (ctl.runId !== this.runId) {
       this.runId = ctl.runId;
+      // A room without bots has fewer lanes; re-lay the realm to match.
+      if (setLaneCount(s.players.length)) {
+        this.board.layout();
+        this.focusLane(ctl.me, true);
+      }
       this.actors.clear();
       this.vfx.clear();
       this.roadKey = '';
@@ -200,6 +205,7 @@ export class SceneView {
       this.time,
     );
     this.actors.sync(s, alpha, this.time, this.rig.camera.quaternion, dt);
+    this.actors.syncGhosts(ctl.ghosts, this.time, s.players[ctl.me]?.colour ?? '#ffffff');
     this.vfx.syncProjectiles(s.projectiles, alpha);
     this.vfx.update(dt);
 
@@ -254,6 +260,6 @@ export class SceneView {
 
   /** Debug: frame the whole realm. */
   overview() {
-    this.rig.focus(0, 2, 175);
+    this.rig.focus(0, 2, 60 + laneCount() * 15);
   }
 }

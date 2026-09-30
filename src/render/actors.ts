@@ -1,6 +1,6 @@
 import { Color, Matrix4, MeshBasicMaterial, PlaneGeometry, Quaternion, Vector3 } from 'three/webgpu';
 import { CREEPS } from '../sim/data/creeps';
-import type { GameState } from '../sim/types';
+import type { GameState, TowerKind } from '../sim/types';
 import { Batch } from './batch';
 import { AIR_HEIGHT, toWorldX, toWorldZ } from './coords';
 import { AIMING, CREEP_MODELS, TOWER_MODELS } from './models';
@@ -14,6 +14,9 @@ const CREEP_SCALE = 1.45;
 export class Actors {
   readonly towers = new BatchSet();
   readonly creeps = new BatchSet();
+  /** Towers you've ordered in multiplayer, shown until the server's turn confirms them. */
+  private ghostMat = new MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.4, depthWrite: false });
+  readonly ghosts = new BatchSet(this.ghostMat);
   private hpBack = new Batch(new PlaneGeometry(1, 1), new MeshBasicMaterial({ color: '#ffffff', depthTest: false, transparent: true, opacity: 0.75 }), 64, false);
   private hpFill = new Batch(new PlaneGeometry(1, 1), new MeshBasicMaterial({ color: '#ffffff', depthTest: false }), 64, false);
   private houses: Color[] = [];
@@ -36,6 +39,14 @@ export class Actors {
   clear() {
     this.yaw.clear();
     this.aim.clear();
+  }
+
+  syncGhosts(list: { lane: number; x: number; y: number; kind: TowerKind }[], time: number, colour: string) {
+    this.ghosts.begin();
+    const c = new Color(colour).lerp(new Color('#ffffff'), 0.5);
+    for (const g of list) pushModel(this.ghosts, TOWER_MODELS[g.kind][0], toWorldX(g.lane, g.x + 0.5), 0, toWorldZ(g.y + 0.5), 0, 1, c);
+    this.ghosts.end();
+    this.ghostMat.opacity = 0.3 + Math.sin(time * 8) * 0.12;
   }
 
   /** Remembers where towers last fired so aiming towers face their targets. */
