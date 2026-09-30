@@ -1,12 +1,43 @@
 # Line Tower Wars: brief
 
-Status: **pre-design.** This captures our current understanding and the
+Status: **pre-design, initial research done.** This captures our current understanding and the
 questions to settle with Kelly before building. The mechanics below come from
 memory of the WC3 map(s). There were many versions, and exact numbers varied,
 so treat specifics as approximate.
 - **Next step:** research to confirm (web search works in the sandbox, but
   many fan sites are blocked by the egress proxy), then run a direction
   conversation with Kelly.
+
+## Research findings (2026-09-30)
+
+Most fan sites (Hive Workshop, wc3maps, w3reforged, Blogspot) are blocked by
+the egress proxy, so these come from search-result snippets. They're
+directionally reliable, but not verified against a map file.
+
+- **Classic numbers (one widely described version):**
+  - 30 lives each;
+  - 25 starting income, paid out every 15 s;
+  - sends are bought from shrines in the middle of the map, get stronger by
+    tier (Shrine, Shrine 2, Super Shrine), and hit the **next player to your
+    right**;
+  - most sends raise your income.
+- **Anti-block:** in at least one version, "anti-cheat" NPCs patrol and
+  destroy towers that block the path. Walls you upgrade into real towers
+  were a common pattern.
+- **Team LTW:** players took on roles, with a "sender" building team income
+  and stealing lives while a "builder" held the lanes.
+- **Stolen lives:** *LTW Evolution* and others framed leaks as stealing
+  lives, where the sender gains what the victim loses.
+- **Modern relatives, to learn from and stay distinct from:**
+  - [*Line Tower Wars*](https://store.steampowered.com/app/4954340/) (Steam,
+    July 2026), free to play:
+    - 2–12 players, FFA;
+    - 5 base elements plus 10 pairwise hybrids (15 lines, 105 towers);
+    - a 90 s planning phase before the gates open;
+    - "wall, then promote walls into towers";
+    - sends skip your lane and hit **everyone else's**.
+  - [ltw.mithryl.dev](https://ltw.mithryl.dev/): a maze TD with a
+    rogue-lite climb.
 
 ## The classic map as we understand it
 
