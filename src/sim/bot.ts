@@ -29,10 +29,28 @@ export function createBrain(rng: RngState): BotBrain {
 
 let sink: GameEvent[] = [];
 /** Applies a bot command, forwarding its events to the tick's event list. */
+let recorder: Command[] | null = null;
 function act(s: GameState, cmd: Command) {
   const r = apply(s, cmd);
   sink.push(...r.events);
+  if (recorder && r.result.ok) recorder.push(cmd);
   return r;
+}
+
+/**
+ * Lets a bot brain play a seat from outside the sim (e.g. a networked bot
+ * client): thinks on a copy of the state and returns the commands it chose.
+ */
+export function decide(s: GameState, player: number, brain: BotBrain): Command[] {
+  const copy = JSON.parse(JSON.stringify(s)) as GameState;
+  copy.players[player].bot = brain;
+  recorder = [];
+  try {
+    botThink(copy, copy.players[player], []);
+    return recorder;
+  } finally {
+    recorder = null;
+  }
 }
 
 const attackDps = (t: Tower) => {
