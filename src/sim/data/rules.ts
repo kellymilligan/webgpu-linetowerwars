@@ -15,7 +15,7 @@ export const RAID_FIRST = 45;
 export const RAID_PERIOD = 40;
 /** Sudden death: raids speed up and harden fast after this. */
 export const SUDDEN_DEATH = 25 * 60;
-export const SUDDEN_DEATH_PERIOD = 12;
+export const SUDDEN_DEATH_PERIOD = 8;
 
 /** Gold the sender plunders when their creep breaks through, per life taken. */
 export const PLUNDER_PER_LIFE = 2;
@@ -26,6 +26,8 @@ export const PLUNDER_PER_LIFE = 2;
 export const MAX_LANES = 2;
 /** Seconds a creep spends marching between one lane's keep and the next gate. */
 export const TRANSIT_TIME = 2.5;
+/** Sent troops harden as the war drags on: +this fraction of hp per minute since the gates opened. */
+export const VETERANCY_PER_MIN = 0.08;
 /** Seconds between spawns within a send. */
 export const SEND_SPACING = 0.35;
 

@@ -40,15 +40,15 @@ const def = (kind: CreepKind, name: string, d: Partial<CreepDef> & Pick<CreepDef
 });
 
 export const CREEPS: Record<CreepKind, CreepDef> = {
-  levy: def('levy', 'Levy', { hp: 45, speed: 1.5, bounty: 1, siege: 6, size: 0.8 }),
-  footman: def('footman', 'Footman', { hp: 150, speed: 1.3, armour: 0.2, bounty: 2, siege: 12 }),
-  outrider: def('outrider', 'Outrider', { hp: 120, speed: 2.6, bounty: 2, siege: 8, size: 1.1 }),
-  crow: def('crow', 'Carrion Crow', { hp: 60, speed: 2.0, air: true, bounty: 1, siege: 0, size: 0.7 }),
-  shieldbearer: def('shieldbearer', 'Shieldbearer', { hp: 280, speed: 1.0, armour: 0.5, bounty: 4, siege: 14, size: 1.1 }),
-  friar: def('friar', 'Friar', { hp: 210, speed: 1.2, armour: 0.1, bounty: 4, siege: 6, healRate: 14, healRadius: 2.2 }),
-  knight: def('knight', 'Knight', { hp: 560, speed: 2.1, armour: 0.3, bounty: 8, lives: 2, siege: 30, size: 1.35 }),
-  ram: def('ram', 'Battering Ram', { hp: 1500, speed: 0.8, armour: 0.4, bounty: 12, lives: 3, siege: 140, slowResist: 0.6, size: 1.7 }),
-  warlord: def('warlord', 'Warlord', { hp: 4200, speed: 1.1, armour: 0.3, bounty: 40, lives: 6, siege: 90, slowResist: 0.5, size: 2.0 }),
+  levy: def('levy', 'Levy', { hp: 60, speed: 1.5, bounty: 1, siege: 6, size: 0.8 }),
+  footman: def('footman', 'Footman', { hp: 195, speed: 1.3, armour: 0.2, bounty: 2, siege: 12 }),
+  outrider: def('outrider', 'Outrider', { hp: 180, speed: 2.6, bounty: 2, siege: 8, size: 1.1 }),
+  crow: def('crow', 'Carrion Crow', { hp: 80, speed: 2.0, air: true, bounty: 1, siege: 0, size: 0.7 }),
+  shieldbearer: def('shieldbearer', 'Shieldbearer', { hp: 440, speed: 1.0, armour: 0.5, bounty: 4, siege: 14, size: 1.1 }),
+  friar: def('friar', 'Friar', { hp: 300, speed: 1.2, armour: 0.1, bounty: 4, siege: 6, healRate: 14, healRadius: 2.2 }),
+  knight: def('knight', 'Knight', { hp: 1100, speed: 2.1, armour: 0.3, bounty: 8, lives: 2, siege: 30, size: 1.35 }),
+  ram: def('ram', 'Battering Ram', { hp: 3200, speed: 0.8, armour: 0.4, bounty: 12, lives: 3, siege: 140, slowResist: 0.6, size: 1.7 }),
+  warlord: def('warlord', 'Warlord', { hp: 9000, speed: 1.1, armour: 0.3, bounty: 40, lives: 6, siege: 90, slowResist: 0.5, size: 2.0 }),
 };
 
 export interface SendDef {

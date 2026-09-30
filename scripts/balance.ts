@@ -3,7 +3,7 @@
  * Plays full 8-bot matches and summarises pace and outcomes. Bots play worse
  * than people, so read this as a floor, not a prediction.
  */
-import { createGame, step, TICK_RATE, MUSTER_TIME } from '../src/sim';
+import { createGame, step, TICK_RATE, MUSTER_TIME, CREEPS } from '../src/sim';
 import type { GameState } from '../src/sim';
 
 export function playOut(seed: string, maxMinutes = 45): GameState {
@@ -14,6 +14,8 @@ export function playOut(seed: string, maxMinutes = 45): GameState {
 }
 
 const games = Number(process.argv[2] ?? 6);
+// Experiment knob: HP=1.4 scales every creep's hp (sends and raids) for this run.
+if (process.env.HP) for (const c of Object.values(CREEPS)) c.hp = Math.round(c.hp * Number(process.env.HP));
 const t0 = performance.now();
 const lengths: number[] = [];
 for (let g = 0; g < games; g++) {

@@ -18,6 +18,7 @@ import {
   SUDDEN_DEATH_PERIOD,
   TICK_RATE,
   TRANSIT_TIME,
+  VETERANCY_PER_MIN,
 } from './data/rules';
 import { RAISE_KINDS, SELL_REFUND, TOWERS, towerLevel } from './data/towers';
 import { cellIndex, nextCell, pathLengthWith, refreshLane, UNREACHABLE } from './pathing';
@@ -147,6 +148,9 @@ export function checkBuild(s: GameState, player: number, x: number, y: number, k
   return { ok: true, blocks: len < 0, pathLength: len };
 }
 
+/** Hp multiplier for troops sent now (veterancy). */
+export const sendHpScale = (s: GameState) => 1 + VETERANCY_PER_MIN * Math.max(0, battleTime(s) / 60);
+
 export function upgradeCost(t: Tower, kind?: TowerKind): number | null {
   if (t.kind === 'palisade') {
     if (!kind || !RAISE_KINDS.includes(kind)) return null;
@@ -262,10 +266,11 @@ function exec(s: GameState, cmd: Command, ev: GameEvent[]): CommandResult {
       // Space the group out behind anything this player already has queued at that gate.
       let queued = 0;
       for (const c of s.creeps) if (c.owner === p.id && c.lane === chk.target && c.delay > 0) queued = Math.max(queued, c.delay);
+      const hpScale = sendHpScale(s);
       let k = 0;
       for (const u of sd.units) {
         for (let i = 0; i < u.count; i++) {
-          spawnCreep(s, u.kind, p.id, chk.target!, queued + secs(SEND_SPACING) * (k + 1), 1);
+          spawnCreep(s, u.kind, p.id, chk.target!, queued + secs(SEND_SPACING) * (k + 1), hpScale);
           k++;
         }
       }
@@ -390,13 +395,15 @@ export function step(s: GameState): GameEvent[] {
 export function raidPlan(n: number, sudden: number): { kind: CreepKind; count: number; hpScale: number }[] {
   // Integer powers by repeated multiply: the sim avoids Math.pow for cross-browser determinism.
   let hpScale = 1 + 0.16 * (n - 1);
-  for (let i = 0; i < sudden; i++) hpScale *= 1.3;
+  for (let i = 0; i < sudden; i++) hpScale *= 1.6;
   const plan: { kind: CreepKind; count: number; hpScale: number }[] = [];
-  if (n % 5 === 0) plan.push({ kind: 'crow', count: 4 + Math.floor(n / 5), hpScale });
-  else if (n % 2 === 1) plan.push({ kind: 'levy', count: 5 + Math.floor(n / 2), hpScale });
-  else plan.push({ kind: 'footman', count: 2 + Math.floor(n / 3), hpScale });
-  if (n >= 6 && n % 3 === 0) plan.push({ kind: 'outrider', count: 1 + Math.floor(n / 6), hpScale });
-  if (n >= 10 && n % 4 === 2) plan.push({ kind: 'shieldbearer', count: Math.floor(n / 5), hpScale });
+  // Headcounts level off; later raids get tougher instead of bigger (cheaper to simulate and read).
+  const more = (base: number, per: number, cap: number) => Math.min(cap, base + Math.floor(n / per));
+  if (n % 5 === 0) plan.push({ kind: 'crow', count: more(4, 5, 10), hpScale });
+  else if (n % 2 === 1) plan.push({ kind: 'levy', count: more(5, 2, 12), hpScale });
+  else plan.push({ kind: 'footman', count: more(2, 3, 8), hpScale });
+  if (n >= 6 && n % 3 === 0) plan.push({ kind: 'outrider', count: more(1, 6, 5), hpScale });
+  if (n >= 10 && n % 4 === 2) plan.push({ kind: 'shieldbearer', count: more(0, 5, 5), hpScale });
   return plan;
 }
 

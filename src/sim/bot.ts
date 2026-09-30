@@ -59,7 +59,9 @@ export function botThink(s: GameState, p: Player, ev: GameEvent[]) {
       if (!build(s, p, mine)) return;
       continue;
     }
-    const ratio = brain.aggression / (1 - brain.aggression);
+    // Temper aggression in the opening so the realm isn't decided in five minutes.
+    const agg = Math.min(brain.aggression, 0.35 + Math.max(0, battleTime(s)) / 400);
+    const ratio = agg / (1 - agg);
     const wantSend = !pressured && p.stats.goldSent < ratio * p.stats.goldTowers + 20;
     if (wantSend) {
       if (send(s, p)) continue;
@@ -67,7 +69,8 @@ export function botThink(s: GameState, p: Player, ev: GameEvent[]) {
       if (brain.saveFor || p.gold < 90) return;
     }
     if (!build(s, p, mine)) {
-      if (!wantSend && send(s, p)) continue;
+      // Couldn't afford the build: save for it, unless gold is piling up.
+      if (!wantSend && p.gold > 160 && send(s, p)) continue;
       return;
     }
   }
