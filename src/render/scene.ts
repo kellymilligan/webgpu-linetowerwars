@@ -26,7 +26,9 @@ import { CameraRig } from './camera';
 import { fromWorld, laneCentreX, laneCount, setLaneCount, toWorldX, toWorldZ } from './coords';
 import { Overlays } from './overlays';
 import { Vfx } from './vfx';
-import { setGlow } from './parts';
+import { BatchSet, setGlow } from './parts';
+import type { GeoKey } from './parts';
+import { charNames, charTex, fitHeight, fitWidth, staticKeys } from './assets';
 import { LightState, moodAt, PRESETS } from './timeOfDay';
 import type { Mood } from './timeOfDay';
 import { TICK_RATE } from '../sim/data/rules';
@@ -42,6 +44,7 @@ export class SceneView {
   private light = new LightState(PRESETS.day);
   /** Pins a mood (debug, screenshots); null follows the day cycle. */
   forceMood: Mood | null = null;
+  private galleryMode = false;
   private zenith = uniform(new Color('#5f9be0'));
   private horizon = uniform(new Color('#cfe4f2'));
   private saturationU = uniform(1.2);
@@ -162,6 +165,7 @@ export class SceneView {
   frame(ctl: Controller, alpha: number, dt: number) {
     this.time += dt;
     const s = ctl.state;
+    if (this.galleryMode) ctl.focusRequest = null;
     if (ctl.focusRequest !== null) {
       this.focusLane(ctl.focusRequest, this.runId === -1);
       ctl.focusRequest = null;
@@ -220,6 +224,12 @@ export class SceneView {
       this.time,
       this.light.glow,
     );
+    // Only lanes near the view get drawn; zoomed far out, cheap stand-ins replace detailed models.
+    const cam = this.rig;
+    const half = cam.distance * Math.tan((cam.camera.fov * Math.PI) / 360) * cam.camera.aspect * 1.9 + 8;
+    this.actors.view.minX = cam.target.x - half;
+    this.actors.view.maxX = cam.target.x + half;
+    this.actors.view.detailed = cam.distance < 115;
     this.actors.sync(s, alpha, this.time, this.rig.camera.quaternion, dt);
     this.actors.syncGhosts(ctl.ghosts, this.time, s.players[ctl.me]?.colour ?? '#ffffff');
     this.vfx.syncProjectiles(s.projectiles, alpha);
@@ -278,6 +288,32 @@ export class SceneView {
   snapMood(m: Mood | null) {
     this.forceMood = m;
     if (m) this.light.set(PRESETS[m]);
+  }
+
+  /** Rebuild scenery once loaded models are available. */
+  assetsChanged() {
+    this.board.rebuild();
+  }
+
+  /** Debug: lay out every loaded model in a grid for review (?gallery). */
+  gallery() {
+    const set = new BatchSet();
+    set.begin();
+    const keys = [...[...charNames].map((c) => `kc:${c}:0`), ...staticKeys()];
+    keys.forEach((key, i) => {
+      const x = (i % 10) * 4 - 18;
+      const z = Math.floor(i / 10) * 4 - 12;
+      const isChar = key.startsWith('kc:');
+      const s = isChar ? fitHeight(key.split(':').slice(0, 2).join(':'), 2) : fitWidth(key, 3.2);
+      const mat = isChar ? (`char:${charTex(key)}` as const) : key.includes('mountain') ? 'peak' : key.includes('tree') ? 'atlasFoliage' : 'atlas';
+      set.get(key as GeoKey, mat).push(x, 0, z, 0.6, s, s, s, '#ffffff');
+    });
+    set.end();
+    this.scene.add(set.group);
+    for (const g of [this.board.group, this.actors.towers.group, this.actors.creeps.group, this.overlays.group]) g.visible = false;
+    this.galleryMode = true;
+    this.rig.focus(0, -2, 64);
+    this.rig.snap();
   }
 
   /** Debug: frame the whole realm. */

@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { Controller } from './app/controller';
 import { webgpuUsable } from './render/capabilities';
 import { SceneView } from './render/scene';
+import { loadAssets } from './render/assets';
 import { createGame, SENDS, TOWER_KINDS } from './sim';
 import { joinRoom } from './net/socket';
 import { createBrain } from './sim/bot';
@@ -17,7 +18,10 @@ async function main() {
   const forced = params.get('renderer');
   const forceWebGL = forced === 'webgl' || (forced !== 'webgpu' && !(await webgpuUsable()));
   const view = new SceneView(canvas, forceWebGL);
-  await view.init();
+  // Models load alongside renderer start-up; primitives stand in if they can't.
+  await Promise.all([view.init(), loadAssets()]);
+  view.assetsChanged();
+  if (params.has('gallery')) view.gallery();
 
   const room = params.get('room');
   const seed = params.get('seed');

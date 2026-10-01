@@ -63,6 +63,10 @@ The game autosaves, and refreshing resumes the match.
 | O | Overview |
 | P | Pause |
 
+## Credits
+
+3D models are from Kay Lousberg's [KayKit](https://kaylousberg.com) packs (CC0). See [`docs/ASSETS.md`](docs/ASSETS.md).
+
 ## Layout
 
 - `src/sim`: deterministic, lockstep-ready rules, bots and data tables.

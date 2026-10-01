@@ -73,21 +73,23 @@ Sends unlock over time (0:00 to 9:00 after the gates open).
 
 ## Presentation
 
-**Look (v0.3 visual pass):** a vivid storybook take on the gritty medieval
-brief.
-- **Day cycle:** an 8-minute cycle over the war (dawn, day, golden hour, dusk,
-  night). Each mood is a full grade: sun, sky gradient, fog, ground tint,
-  bloom, saturation and tint, plus a vignette.
-- **Countryside:** a meadow with drifting cloud shadows, dry and heather
-  patches, a river with bridges in front of the keeps, patchwork fields and
-  hay beyond the gates, and villages of thatched cottages.
-- **Vegetation:** woodland mixing pines and broadleaf trees with autumn
-  colour, plus bushes, grass tufts and wildflowers. All of it sways in the
-  wind via a TSL vertex shader on instanced meshes.
-- **Heraldry everywhere:** house pennants along the lane walls, gate flags,
-  keep standards and banners on the towers, all rippling as cloth.
-- **Motes:** pollen by day, fireflies at night. Torches and fire glow
-  brighter after dark.
+**Look (v0.4, The North):** a Highland glen, inspired by GoT's North and
+Scotland. It's cold, misty and weathered, with a low warm sun that makes the
+heather and snow glow.
+- **Day cycle:** an 8-minute cycle over the war: dawn, day, golden hour,
+  dusk, night.
+- **Moorland:** heather drifts, rusty bracken, peat and old snow (thicker to
+  the north) under drifting cloud shadow, plus a peat-dark river with
+  bridges.
+- **Models:** slate-roofed KayKit castles and crofts, snow-dusted rooftops,
+  Scots pines and autumn birches, granite boulders, and snow-capped
+  mountains ringing the glen.
+- **Characters:** creeps are KayKit characters on baked walk cycles, tinted
+  by house and standing on a house-coloured disc. Neutral raiders are
+  skeleton wights from the north.
+- **Heraldry:** house pennants, gate flags, keep standards and tower banners
+  in rippling cloth.
+- **Motes:** drifting snow by day, embers at night.
 
 - **Isometric 3D:** eight walled roads side by side on a foggy moor. Each has
   a gate at its head and its house's keep at its foot.

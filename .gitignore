@@ -4,3 +4,5 @@ dist
 !docs/**/*.png
 .vite
 .wrangler
+.cache
+!public/assets/**/*.png

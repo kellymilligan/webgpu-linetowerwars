@@ -25,8 +25,17 @@ export const GEO = {
   rock: new IcosahedronGeometry(0.5, 0),
 } satisfies Record<string, BufferGeometry>;
 
-export type GeoKey = keyof typeof GEO;
-export type MatKey = 'matte' | 'metal' | 'glow' | 'foliage' | 'cloth';
+/** Built-in primitives, plus models loaded at runtime: `kk:<model>` (KayKit statics) and `kc:<char>:<frame>` (baked character frames). */
+export type GeoKey = keyof typeof GEO | `kk:${string}` | `kc:${string}`;
+export type MatKey = 'matte' | 'metal' | 'glow' | 'foliage' | 'cloth' | 'atlas' | 'atlasFoliage' | 'peak' | `char:${string}`;
+
+const EXTRA_GEO = new Map<string, BufferGeometry>();
+/** Registers a loaded geometry under a `kk:`/`kc:` key. */
+export function registerGeometry(key: string, g: BufferGeometry) {
+  EXTRA_GEO.set(key, g);
+}
+export const hasGeometry = (key: string) => key in GEO || EXTRA_GEO.has(key);
+const geometryOf = (key: GeoKey): BufferGeometry => (GEO as Record<string, BufferGeometry>)[key] ?? EXTRA_GEO.get(key)!;
 
 /*
  * Wind materials. With instancing, positionLocal already includes the instance
@@ -54,7 +63,7 @@ function cloth() {
   return m;
 }
 
-export const MATS: Record<MatKey, Material> = {
+export const MATS: Partial<Record<MatKey, Material>> & Record<'matte' | 'metal' | 'glow' | 'foliage' | 'cloth', Material> = {
   matte: new MeshStandardMaterial({ color: '#ffffff', roughness: 0.88, metalness: 0 }),
   metal: new MeshStandardMaterial({ color: '#ffffff', roughness: 0.4, metalness: 0.65 }),
   glow: new MeshBasicMaterial({ color: new Color('#ffffff').multiplyScalar(2.2) }),
@@ -68,10 +77,10 @@ export function setGlow(level: number) {
 }
 
 export const PALETTE = {
-  stone: '#b0a690',
-  stoneDark: '#7a7266',
-  wood: '#8a5a32',
-  woodDark: '#5a3a22',
+  stone: '#9a978f',
+  stoneDark: '#646260',
+  wood: '#7a5434',
+  woodDark: '#4a3424',
   iron: '#4a4d52',
   steel: '#9aa0a6',
   fire: '#ff7a2a',
@@ -82,6 +91,8 @@ export const PALETTE = {
   black: '#1c1b1d',
   bandit: '#2f2b28',
   thatch: '#c9a25a',
+  white: '#ffffff',
+  birch: '#d8d2c6',
   roofRed: '#a8432e',
 };
 
@@ -113,7 +124,7 @@ export class BatchSet {
     const key = `${g}:${m}`;
     let b = this.batches.get(key);
     if (!b) {
-      b = new Batch(GEO[g], this.override ?? MATS[m], 128, !this.override && shadows && m !== 'glow');
+      b = new Batch(geometryOf(g), this.override ?? MATS[m] ?? MATS.matte, 128, !this.override && shadows && m !== 'glow');
       this.batches.set(key, b);
       this.group.add(b.mesh);
     }

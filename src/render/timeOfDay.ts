@@ -29,36 +29,38 @@ export interface LightPreset {
 
 export type Mood = 'dawn' | 'day' | 'golden' | 'dusk' | 'night';
 
+// The North: cold, misty and muted, with a low warm sun that makes the
+// heather and snow glow when it breaks through.
 export const PRESETS: Record<Mood, LightPreset> = {
   dawn: {
-    sun: '#ffc9a0', sunIntensity: 2.4, sunElevation: 0.32, sunAzimuth: -0.7,
-    hemiSky: '#c9c4ff', hemiGround: '#4a4034', hemiIntensity: 1.0,
-    zenith: '#7f93d6', horizon: '#f2c3b0', fog: '#cfb8b4',
-    exposure: 1.0, glow: 0.7, bloom: 0.32, saturation: 1.15, tint: '#fff1ea', grass: '#5d7a3a',
+    sun: '#ffc6a8', sunIntensity: 2.3, sunElevation: 0.24, sunAzimuth: -0.7,
+    hemiSky: '#a7b2d4', hemiGround: '#38343a', hemiIntensity: 0.95,
+    zenith: '#5f6f9c', horizon: '#e2b8ad', fog: '#a9a6b3',
+    exposure: 1.0, glow: 0.8, bloom: 0.3, saturation: 0.95, tint: '#f1ecf4', grass: '#525e3e',
   },
   day: {
-    sun: '#fff0d6', sunIntensity: 3.4, sunElevation: 0.95, sunAzimuth: 0.6,
-    hemiSky: '#bfe0ff', hemiGround: '#4e4a30', hemiIntensity: 0.9,
-    zenith: '#5f9be0', horizon: '#cfe4f2', fog: '#b9d3e4',
-    exposure: 0.95, glow: 0.35, bloom: 0.2, saturation: 1.12, tint: '#fff6e8', grass: '#4f7a2e',
+    sun: '#fff2df', sunIntensity: 3.1, sunElevation: 0.62, sunAzimuth: 0.6,
+    hemiSky: '#c2cfde', hemiGround: '#3a3934', hemiIntensity: 0.9,
+    zenith: '#7590b2', horizon: '#d3dbe2', fog: '#b3bcc6',
+    exposure: 0.95, glow: 0.4, bloom: 0.18, saturation: 0.92, tint: '#eef2f8', grass: '#5d6a45',
   },
   golden: {
-    sun: '#ffc88a', sunIntensity: 3.0, sunElevation: 0.42, sunAzimuth: 1.9,
-    hemiSky: '#ffd6a8', hemiGround: '#4f3a28', hemiIntensity: 0.85,
-    zenith: '#6d8fd0', horizon: '#ffcf96', fog: '#e9c39a',
-    exposure: 1.0, glow: 0.6, bloom: 0.3, saturation: 1.16, tint: '#fff6ea', grass: '#5f8a33',
+    sun: '#ffbf80', sunIntensity: 3.4, sunElevation: 0.3, sunAzimuth: 1.9,
+    hemiSky: '#a9b6cf', hemiGround: '#3c3530', hemiIntensity: 0.8,
+    zenith: '#61789f', horizon: '#efc394', fog: '#c2b3a3',
+    exposure: 1.02, glow: 0.7, bloom: 0.3, saturation: 1.05, tint: '#fff3e6', grass: '#69683f',
   },
   dusk: {
-    sun: '#ff7e4a', sunIntensity: 2.0, sunElevation: 0.2, sunAzimuth: 2.4,
-    hemiSky: '#e8a2b8', hemiGround: '#3c2a34', hemiIntensity: 0.85,
-    zenith: '#4a4f9a', horizon: '#ff9a74', fog: '#c48c88',
-    exposure: 1.08, glow: 1.0, bloom: 0.45, saturation: 1.25, tint: '#ffe6e0', grass: '#5d6a3a',
+    sun: '#ff8a5a', sunIntensity: 1.9, sunElevation: 0.16, sunAzimuth: 2.4,
+    hemiSky: '#8790b8', hemiGround: '#2c2830', hemiIntensity: 0.8,
+    zenith: '#3a4472', horizon: '#d08670', fog: '#776d80',
+    exposure: 1.05, glow: 1.1, bloom: 0.42, saturation: 1.0, tint: '#f2e4ea', grass: '#474e38',
   },
   night: {
     sun: '#9fb4ff', sunIntensity: 0.8, sunElevation: 0.85, sunAzimuth: -2.2,
-    hemiSky: '#4057a8', hemiGround: '#141826', hemiIntensity: 0.55,
-    zenith: '#0f1640', horizon: '#2c3a72', fog: '#1d2650',
-    exposure: 1.05, glow: 1.9, bloom: 0.7, saturation: 1.1, tint: '#c9d4ff', grass: '#3a5c46',
+    hemiSky: '#3c4f94', hemiGround: '#12151f', hemiIntensity: 0.55,
+    zenith: '#0d1336', horizon: '#26325f', fog: '#1a2246',
+    exposure: 1.05, glow: 1.9, bloom: 0.7, saturation: 0.95, tint: '#c9d4ff', grass: '#34493c',
   },
 };
 
