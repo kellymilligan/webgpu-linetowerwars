@@ -9,7 +9,7 @@ import type { Part } from './parts';
 
 const pennant = (h: number): Part[] => [
   part('cyl', 'wood', [0, h, 0], [0.04, 0.5, 0.04]),
-  part('box', 'house', [0.13, h + 0.3, 0], [0.24, 0.16, 0.02]),
+  part('box', 'house', [0.13, h + 0.3, 0], [0.24, 0.16, 0.02], undefined, 'cloth'),
 ];
 
 const crenels = (y: number, w: number): Part[] => {
@@ -33,8 +33,23 @@ export const TOWER_MODELS: Record<TowerKind, Part[][]> = {
     ],
   ],
   archer: [
-    [part('box', 'stone', [0, 0, 0], [0.62, 1.0, 0.62]), ...crenels(1.0, 0.74), ...pennant(1.2)],
-    [part('box', 'stone', [0, 0, 0], [0.7, 1.45, 0.7]), part('box', 'woodDark', [0, 1.45, 0], [0.84, 0.18, 0.84]), ...crenels(1.63, 0.8), ...pennant(1.85)],
+    [
+      part('box', 'stone', [0, 0, 0], [0.62, 1.0, 0.62]),
+      part('box', 'black', [0, 0.62, 0.315], [0.06, 0.2, 0.01]),
+      part('box', 'house', [0, 0.18, 0.32], [0.3, 0.36, 0.02]),
+      ...crenels(1.0, 0.74),
+      ...pennant(1.2),
+    ],
+    [
+      part('box', 'stone', [0, 0, 0], [0.7, 1.45, 0.7]),
+      part('box', 'black', [0, 0.95, 0.355], [0.07, 0.24, 0.01]),
+      part('box', 'black', [0.355, 0.95, 0], [0.01, 0.24, 0.07]),
+      part('box', 'house', [0, 0.3, 0.36], [0.36, 0.5, 0.02]),
+      part('box', 'woodDark', [0, 1.45, 0], [0.84, 0.18, 0.84]),
+      ...crenels(1.63, 0.8),
+      part('cone4', 'roofRed', [0, 1.75, 0], [0.7, 0.55, 0.7]),
+      ...pennant(2.25),
+    ],
     [
       part('box', 'stoneDark', [0, 0, 0], [0.8, 0.3, 0.8]),
       part('box', 'stone', [0, 0.3, 0], [0.66, 1.55, 0.66]),
@@ -131,6 +146,12 @@ export const TOWER_MODELS: Record<TowerKind, Part[][]> = {
     ],
   ],
 };
+
+// Every built tower stands on a dressed-stone plinth, so the maze reads as fortifications.
+for (const kind of Object.keys(TOWER_MODELS) as TowerKind[]) {
+  if (kind === 'palisade') continue;
+  for (const level of TOWER_MODELS[kind]) level.unshift(part('box', 'stoneDark', [0, -0.02, 0], [0.92, 0.1, 0.92]));
+}
 
 /** Towers that swing round to face their target. */
 export const AIMING: ReadonlySet<TowerKind> = new Set<TowerKind>(['mangonel', 'ballista']);

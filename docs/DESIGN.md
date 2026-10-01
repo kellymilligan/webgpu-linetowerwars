@@ -73,6 +73,22 @@ Sends unlock over time (0:00 to 9:00 after the gates open).
 
 ## Presentation
 
+**Look (v0.3 visual pass):** a vivid storybook take on the gritty medieval
+brief.
+- **Day cycle:** an 8-minute cycle over the war (dawn, day, golden hour, dusk,
+  night). Each mood is a full grade: sun, sky gradient, fog, ground tint,
+  bloom, saturation and tint, plus a vignette.
+- **Countryside:** a meadow with drifting cloud shadows, dry and heather
+  patches, a river with bridges in front of the keeps, patchwork fields and
+  hay beyond the gates, and villages of thatched cottages.
+- **Vegetation:** woodland mixing pines and broadleaf trees with autumn
+  colour, plus bushes, grass tufts and wildflowers. All of it sways in the
+  wind via a TSL vertex shader on instanced meshes.
+- **Heraldry everywhere:** house pennants along the lane walls, gate flags,
+  keep standards and banners on the towers, all rippling as cloth.
+- **Motes:** pollen by day, fireflies at night. Torches and fire glow
+  brighter after dark.
+
 - **Isometric 3D:** eight walled roads side by side on a foggy moor. Each has
   a gate at its head and its house's keep at its foot.
 - **Colours:** creeps wear their sender's house colour; raiders wear black.

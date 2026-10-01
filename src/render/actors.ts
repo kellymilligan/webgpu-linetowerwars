@@ -8,7 +8,7 @@ import { BatchSet, PALETTE, pushModel } from './parts';
 
 const BANDIT = new Color(PALETTE.bandit);
 /** Creeps are modelled at roughly human scale against 1-tile towers; bump them up to read at a distance. */
-const CREEP_SCALE = 1.45;
+const CREEP_SCALE = 1.7;
 
 /** Renders every tower and creep in all lanes with instanced batches. */
 export class Actors {
@@ -66,7 +66,8 @@ export class Actors {
     this.towers.begin();
     for (const t of s.towers) {
       const frac = t.hp / t.maxHp;
-      const shade = 0.45 + 0.55 * frac;
+      // Damage darkens a tower; a small per-tower variation keeps rows of the same kind from looking cloned.
+      const shade = (0.45 + 0.55 * frac) * (0.93 + ((t.id * 37) % 11) / 100);
       const yaw = AIMING.has(t.kind) ? (this.aim.get(t.id) ?? 0) : 0;
       pushModel(this.towers, TOWER_MODELS[t.kind][t.level], toWorldX(t.lane, t.x + 0.5), 0, toWorldZ(t.y + 0.5), yaw, 1, this.houses[t.lane], shade);
     }

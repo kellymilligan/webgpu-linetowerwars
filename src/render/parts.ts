@@ -7,9 +7,11 @@ import {
   IcosahedronGeometry,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  MeshStandardNodeMaterial,
   SphereGeometry,
 } from 'three/webgpu';
 import type { BufferGeometry, Material } from 'three/webgpu';
+import { float, instanceIndex, positionGeometry, positionLocal, sin, time, vec3 } from 'three/tsl';
 import { Batch } from './batch';
 
 /** Unit primitives with their base at y = 0 (spheres are centred). */
@@ -24,19 +26,52 @@ export const GEO = {
 } satisfies Record<string, BufferGeometry>;
 
 export type GeoKey = keyof typeof GEO;
-export type MatKey = 'matte' | 'metal' | 'glow';
+export type MatKey = 'matte' | 'metal' | 'glow' | 'foliage' | 'cloth';
+
+/*
+ * Wind materials. With instancing, positionLocal already includes the instance
+ * transform, so shapes are read from positionGeometry (the unit primitive) and
+ * displacements are added in world-sized units.
+ */
+
+/** Leaves sway in the wind: displacement grows with height within each part, phase varies per instance. */
+function foliage() {
+  const m = new MeshStandardNodeMaterial({ roughness: 0.85, metalness: 0 });
+  const phase = float(instanceIndex).mul(1.71);
+  const h = positionGeometry.y.add(0.5).clamp(0, 1.5);
+  const sway = sin(time.mul(1.4).add(phase)).mul(0.07).add(sin(time.mul(3.1).add(phase.mul(2.3))).mul(0.025)).mul(h);
+  m.positionNode = positionLocal.add(vec3(sway, 0, sway.mul(0.6)));
+  return m;
+}
+
+/** Banners ripple: a travelling wave across the cloth, pinned at the pole side (local x = -0.5). */
+function cloth() {
+  const m = new MeshStandardNodeMaterial({ roughness: 0.75, metalness: 0 });
+  const phase = float(instanceIndex).mul(0.93);
+  const along = positionGeometry.x.add(0.5).clamp(0, 1);
+  const wave = sin(time.mul(4.2).add(along.mul(5)).add(phase)).mul(0.07).mul(along);
+  m.positionNode = positionLocal.add(vec3(0, sin(time.mul(2.1).add(phase)).mul(0.03).mul(along), wave));
+  return m;
+}
 
 export const MATS: Record<MatKey, Material> = {
-  matte: new MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, metalness: 0 }),
-  metal: new MeshStandardMaterial({ color: '#ffffff', roughness: 0.45, metalness: 0.6 }),
+  matte: new MeshStandardMaterial({ color: '#ffffff', roughness: 0.88, metalness: 0 }),
+  metal: new MeshStandardMaterial({ color: '#ffffff', roughness: 0.4, metalness: 0.65 }),
   glow: new MeshBasicMaterial({ color: new Color('#ffffff').multiplyScalar(2.2) }),
+  foliage: foliage(),
+  cloth: cloth(),
 };
 
+/** Torches, fire and other glowing parts brighten at night. */
+export function setGlow(level: number) {
+  (MATS.glow as MeshBasicMaterial).color.setScalar(1.2 + level * 1.6);
+}
+
 export const PALETTE = {
-  stone: '#8b867c',
-  stoneDark: '#5d5952',
-  wood: '#6e4b2f',
-  woodDark: '#45301f',
+  stone: '#b0a690',
+  stoneDark: '#7a7266',
+  wood: '#8a5a32',
+  woodDark: '#5a3a22',
   iron: '#4a4d52',
   steel: '#9aa0a6',
   fire: '#ff7a2a',
@@ -46,6 +81,8 @@ export const PALETTE = {
   horse: '#5b3d28',
   black: '#1c1b1d',
   bandit: '#2f2b28',
+  thatch: '#c9a25a',
+  roofRed: '#a8432e',
 };
 
 export type Tint = keyof typeof PALETTE | 'house';

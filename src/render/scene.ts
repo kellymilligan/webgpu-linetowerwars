@@ -14,7 +14,7 @@ import {
   Vector3,
   WebGPURenderer,
 } from 'three/webgpu';
-import { pass } from 'three/tsl';
+import { float, mix, pass, saturation, screenUV, smoothstep, uniform, vec4 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Controller } from '../app/controller';
@@ -26,21 +26,10 @@ import { CameraRig } from './camera';
 import { fromWorld, laneCentreX, laneCount, setLaneCount, toWorldX, toWorldZ } from './coords';
 import { Overlays } from './overlays';
 import { Vfx } from './vfx';
-
-/** A single grim, overcast late-afternoon look for now. */
-const LOOK = {
-  sun: '#ffd9ae',
-  sunIntensity: 2.2,
-  sunElevation: 0.55,
-  sunAzimuth: 2.2,
-  sky: '#9fb0c4',
-  ground: '#3a3228',
-  hemi: 0.9,
-  fog: '#6f7780',
-  exposure: 0.95,
-  bloom: 0.35,
-  grass: '#3d4331',
-};
+import { setGlow } from './parts';
+import { LightState, moodAt, PRESETS } from './timeOfDay';
+import type { Mood } from './timeOfDay';
+import { TICK_RATE } from '../sim/data/rules';
 
 export class SceneView {
   readonly renderer: WebGPURenderer;
@@ -48,8 +37,15 @@ export class SceneView {
   readonly scene = new Scene();
   private pipeline!: RenderPipeline;
   private bloomNode!: ReturnType<typeof bloom>;
-  private sun = new DirectionalLight(LOOK.sun, LOOK.sunIntensity);
-  private hemi = new HemisphereLight(LOOK.sky, LOOK.ground, LOOK.hemi);
+  private sun = new DirectionalLight('#ffffff', 3);
+  private hemi = new HemisphereLight('#ffffff', '#444444', 1);
+  private light = new LightState(PRESETS.day);
+  /** Pins a mood (debug, screenshots); null follows the day cycle. */
+  forceMood: Mood | null = null;
+  private zenith = uniform(new Color('#5f9be0'));
+  private horizon = uniform(new Color('#cfe4f2'));
+  private saturationU = uniform(1.2);
+  private tintU = uniform(new Vector3(1, 1, 1));
   private board = new Board();
   private actors = new Actors();
   private vfx = new Vfx();
@@ -72,15 +68,15 @@ export class SceneView {
     this.backend = backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2';
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = LOOK.exposure;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
 
     const pmrem = new PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.25;
-    this.scene.fog = new Fog(LOOK.fog, 70, 210);
-    this.scene.background = new Color(LOOK.fog);
+    this.scene.fog = new Fog('#b9d3e4', 70, 210);
+    // Sky: a vertical gradient from horizon to zenith behind everything.
+    this.scene.backgroundNode = mix(this.horizon, this.zenith, smoothstep(0.35, 0.0, screenUV.y));
 
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -94,15 +90,17 @@ export class SceneView {
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun, this.sun.target, this.hemi);
-    const g = new Color(LOOK.grass);
-    this.board.grass.value.set(g.r, g.g, g.b);
     this.scene.add(this.board.group, this.actors.towers.group, this.actors.ghosts.group, this.actors.creeps.group, this.vfx.group, this.overlays.group);
-
     this.pipeline = new RenderPipeline(this.renderer);
     const scenePass = pass(this.scene, this.rig.camera);
     const colour = scenePass.getTextureNode('output');
-    this.bloomNode = bloom(colour, LOOK.bloom, 0.4, 0.8);
-    this.pipeline.outputNode = colour.add(this.bloomNode);
+    this.bloomNode = bloom(colour, 0.3, 0.4, 0.8);
+    // Grade: saturation and a mood tint, then a soft vignette.
+    const lit = colour.add(this.bloomNode);
+    const graded = saturation(lit.rgb, this.saturationU).mul(this.tintU);
+    const d = screenUV.sub(0.5).length();
+    const vignette = mix(float(1), float(0.72), smoothstep(0.45, 0.85, d));
+    this.pipeline.outputNode = vec4(graded.mul(vignette), lit.a);
     this.resize();
   }
 
@@ -177,9 +175,26 @@ export class SceneView {
     // Keep the shadow frustum centred on what the camera is looking at.
     const t = this.rig.target;
     this.sun.target.position.set(t.x, 0, t.z);
-    const ce = Math.cos(LOOK.sunElevation);
+    const ms = ctl.state.tick / TICK_RATE;
+    const mood = this.forceMood ?? moodAt(ms);
+    this.light.approach(PRESETS[mood], 1 - Math.exp(-dt * 0.6));
+    const Lt = this.light;
+    this.sun.color.copy(Lt.sun);
+    this.sun.intensity = Lt.sunIntensity;
+    this.hemi.color.copy(Lt.hemiSky);
+    this.hemi.groundColor.copy(Lt.hemiGround);
+    this.hemi.intensity = Lt.hemiIntensity;
+    (this.scene.fog as Fog).color.copy(Lt.fog);
+    this.zenith.value.copy(Lt.zenith);
+    this.horizon.value.copy(Lt.horizon);
+    this.saturationU.value = Lt.saturation;
+    this.tintU.value.set(Lt.tint.r, Lt.tint.g, Lt.tint.b);
+    this.renderer.toneMappingExposure = Lt.exposure;
+    this.board.grass.value.set(Lt.grass.r, Lt.grass.g, Lt.grass.b);
+    setGlow(Lt.glow);
+    const ce = Math.cos(Lt.sunElevation);
     const d = 70;
-    this.sun.position.set(t.x + Math.sin(LOOK.sunAzimuth) * ce * d, Math.sin(LOOK.sunElevation) * d, t.z + Math.cos(LOOK.sunAzimuth) * ce * d);
+    this.sun.position.set(t.x + Math.sin(Lt.sunAzimuth) * ce * d, Math.sin(Lt.sunElevation) * d, t.z + Math.cos(Lt.sunAzimuth) * ce * d);
 
     if (ctl.runId !== this.runId) {
       this.runId = ctl.runId;
@@ -203,6 +218,7 @@ export class SceneView {
       s.players.map((p) => p.colour),
       s.players.map((p) => !p.alive),
       this.time,
+      this.light.glow,
     );
     this.actors.sync(s, alpha, this.time, this.rig.camera.quaternion, dt);
     this.actors.syncGhosts(ctl.ghosts, this.time, s.players[ctl.me]?.colour ?? '#ffffff');
@@ -228,7 +244,7 @@ export class SceneView {
     this.updateSelection(ctl);
     this.overlays.update(this.time);
 
-    this.bloomNode.strength.value = LOOK.bloom;
+    this.bloomNode.strength.value = this.light.bloom;
     this.pipeline.render();
   }
 
@@ -256,6 +272,12 @@ export class SceneView {
     }
     this.overlays.setRange(range);
     this.overlays.setSelected(tile);
+  }
+
+  /** Debug and screenshots: jump straight to a mood (null resumes the cycle). */
+  snapMood(m: Mood | null) {
+    this.forceMood = m;
+    if (m) this.light.set(PRESETS[m]);
   }
 
   /** Debug: frame the whole realm. */
