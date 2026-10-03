@@ -1,5 +1,8 @@
 # Handover: extract a reusable multiplayer kit
 
+> **Superseded:** this stack now lives in the `lobbyhop` package, and Siegeline
+> uses it (see `docs/MULTIPLAYER.md`). Kept for history.
+
 **For:** a fresh Claude Code session on a **new, empty repo**.
 **From:** the Siegeline (Line Tower Wars) session, where all of this was
 built and proven. The working code is in `kellymilligan/webgpu-linetowerwars`

@@ -11,5 +11,5 @@
     "noEmit": true,
     "isolatedModules": true
   },
-  "include": ["index.ts", "../src/net/room.ts", "../src/net/protocol.ts", "../src/sim"]
+  "include": ["index.ts", "../src/multiplayer/game.ts", "../src/sim"]
 }

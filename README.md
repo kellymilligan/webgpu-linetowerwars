@@ -73,6 +73,6 @@ The game autosaves, and refreshing resumes the match.
 - `src/render`: the three.js scene.
 - `src/ui`: Preact UI.
 - `src/app`: the controller that bridges them.
-- `src/net`, `server/`: multiplayer (lockstep protocol, room logic, Cloudflare Worker).
+- `src/multiplayer`, `server/`: multiplayer via [lobbyhop](https://github.com/kellymilligan/Lobbyhop) (lockstep game definition, Cloudflare Worker).
 - `scripts/`: balance runner and screenshots.
 - `reference/gemtd/`: files carried over from Gem TD. Not compiled.

@@ -22,4 +22,4 @@ jobs:
       # Lockstep multiplayer needs every browser to compute the same game.
       # Replay a scripted war in Node, Chromium, Firefox and WebKit and compare state hashes.
       - run: npx playwright install --with-deps chromium firefox webkit
-      - run: node scripts/determinism.mjs --require-all
+      - run: npx lobbyhop determinism src/multiplayer/determinism.ts --require-all

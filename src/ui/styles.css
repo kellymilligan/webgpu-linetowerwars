@@ -829,6 +829,16 @@ button.on {
 .seat.me {
   background: rgba(226, 184, 102, 0.1);
 }
+.seat .kick {
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  opacity: 0.45;
+}
+.seat .kick:hover {
+  opacity: 1;
+}
 .toggle {
   display: flex;
   align-items: center;

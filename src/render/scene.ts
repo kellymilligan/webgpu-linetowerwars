@@ -69,9 +69,11 @@ export class SceneView {
     await this.renderer.init();
     const backend = (this.renderer as unknown as { backend: { isWebGPUBackend?: boolean } }).backend;
     this.backend = backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2';
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // `?lite`: half resolution and no shadows, for slow machines and multi-browser tests.
+    const lite = new URLSearchParams(location.search).has('lite');
+    this.renderer.setPixelRatio(lite ? 0.5 : Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = ACESFilmicToneMapping;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !lite;
     this.renderer.shadowMap.type = PCFShadowMap;
 
     const pmrem = new PMREMGenerator(this.renderer);

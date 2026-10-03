@@ -18,7 +18,7 @@ import type { GameState } from '../sim';
 import { GLYPH, HOTKEY, mmss, SHORT } from './format';
 import { WorldLayer } from './World';
 import { Lobby } from './Lobby';
-import { newRoomCode } from '../net/socket';
+import { newRoomCode } from 'lobbyhop/client';
 
 export function App({ ctl, backend }: { ctl: Controller; backend: string }) {
   const [, setV] = useState(0);

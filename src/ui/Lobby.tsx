@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Controller } from '../app/controller';
-import { MAX_SEATS } from '../net/protocol';
+import { MAX_SEATS } from '../multiplayer/game';
 import { HOUSES } from '../sim';
 
-/** The war council: pick a name and colour, share the link, host starts. */
+/**
+ * The war council: pick a name and colour, share the link, host starts.
+ * Rendered from lobbyhop's RoomClient fields. The `lh-*` classes let
+ * `npx lobbyhop e2e` drive it like the stock lobby.
+ */
 export function Lobby({ ctl }: { ctl: Controller }) {
   const net = ctl.net!;
   const [name, setName] = useState(net.profile.name);
@@ -13,7 +17,7 @@ export function Lobby({ ctl }: { ctl: Controller }) {
   const taken = new Set(net.members.filter((m) => m !== me).map((m) => m.colour));
   const link = location.href;
   const commitName = () => {
-    if (name.trim() && name !== net.profile.name) net.setProfile(name, me?.colour ?? net.profile.colour);
+    if (name.trim() && name !== net.profile.name) net.setProfile({ name });
   };
   const copy = async () => {
     try {
@@ -26,16 +30,16 @@ export function Lobby({ ctl }: { ctl: Controller }) {
   };
   return (
     <div class="modal">
-      <div class="sheet panel lobby">
+      <div class="sheet panel lobby lh-panel">
         <h2>War council</h2>
         {net.error ? (
-          <p class="bad">{net.error}</p>
+          <p class="bad">{net.error.reason}</p>
         ) : !net.connected ? (
           <p class="dim">Riding to the council…</p>
         ) : (
           <p class="dim">
             Share this link.{' '}
-            {net.fillBots ? 'Empty seats are filled by bot lords when the host begins.' : 'No bots: the realm has one holding per player.'}
+            {net.settings.fillBots ? 'Empty seats are filled by bot lords when the host begins.' : 'No bots: the realm has one holding per player (a lone lord faces one bot).'}
           </p>
         )}
         <div class="linkrow">
@@ -45,6 +49,7 @@ export function Lobby({ ctl }: { ctl: Controller }) {
         <label class="field">
           <span class="dim">Your name</span>
           <input
+            type="text"
             value={name}
             maxLength={16}
             onInput={(e) => setName((e.target as HTMLInputElement).value)}
@@ -58,11 +63,11 @@ export function Lobby({ ctl }: { ctl: Controller }) {
             {HOUSES.map((h) => (
               <button
                 key={h.colour}
-                class={`swatch-btn ${me?.colour === h.colour ? 'on' : ''}`}
+                class={`swatch-btn lh-swatch ${me?.colour === h.colour ? 'on' : ''}`}
                 style={{ background: h.colour }}
                 disabled={taken.has(h.colour)}
                 title={taken.has(h.colour) ? 'Taken' : h.name}
-                onClick={() => net.setProfile(name, h.colour)}
+                onClick={() => net.setProfile({ colour: h.colour })}
               />
             ))}
           </div>
@@ -73,21 +78,26 @@ export function Lobby({ ctl }: { ctl: Controller }) {
             return (
               <div key={i} class={`seat ${m ? '' : 'empty'} ${m?.seat === net.seat ? 'me' : ''}`}>
                 <i class="swatch" style={{ background: m?.colour ?? 'rgba(255,255,255,0.12)' }} />
-                <span>{m ? m.name : net.fillBots ? 'Bot lord' : 'Open seat'}</span>
+                <span>{m ? m.name : net.settings.fillBots ? 'Bot lord' : 'Open seat'}</span>
                 {m?.host && <span class="chip">host</span>}
                 {m && !m.connected && <span class="chip">away</span>}
+                {net.host && m && m.seat !== net.seat && (
+                  <button class="kick" title={`Send ${m.name} away`} onClick={() => net.kick(m.seat)}>
+                    ✕
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
         <label class={`toggle ${net.host ? '' : 'readonly'}`} title={net.host ? '' : 'The host decides'}>
-          <input type="checkbox" checked={net.fillBots} disabled={!net.host} onChange={(e) => net.setFillBots((e.target as HTMLInputElement).checked)} />
+          <input type="checkbox" checked={net.settings.fillBots} disabled={!net.host} onChange={(e) => net.setSettings({ fillBots: (e.target as HTMLInputElement).checked })} />
           <span>Fill empty seats with bot lords</span>
         </label>
         <div class="actions">
           {net.host ? (
-            <button class="primary" disabled={!net.connected || (!net.fillBots && net.members.length < 2)} onClick={() => net.start()}>
-              Begin the war{!net.fillBots && ` · ${net.members.length} ${net.members.length === 1 ? 'holding' : 'holdings'}`}
+            <button class="primary lh-primary" disabled={!net.connected} onClick={() => net.start()}>
+              Begin the war{!net.settings.fillBots && ` · ${Math.max(2, net.members.length)} holdings`}
             </button>
           ) : (
             <span class="dim">Waiting for the host to begin…</span>

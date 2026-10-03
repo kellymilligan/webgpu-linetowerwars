@@ -4,7 +4,8 @@ import { webgpuUsable } from './render/capabilities';
 import { SceneView } from './render/scene';
 import { loadAssets } from './render/assets';
 import { createGame, SENDS, TOWER_KINDS } from './sim';
-import { joinRoom } from './net/socket';
+import { joinRoom, roomFromUrl } from 'lobbyhop/client';
+import { game } from './multiplayer/game';
 import { createBrain } from './sim/bot';
 import type { TowerKind } from './sim';
 import { App } from './ui/App';
@@ -23,13 +24,16 @@ async function main() {
   view.assetsChanged();
   if (params.has('gallery')) view.gallery();
 
-  const room = params.get('room');
+  const room = roomFromUrl();
   const seed = params.get('seed');
   let ctl: Controller;
   if (room) {
     // Multiplayer: a quiet placeholder realm shows behind the lobby until the war starts.
     ctl = new Controller(createGame('council', { humans: [] }));
-    ctl.attachNet(joinRoom(room.toLowerCase()));
+    const joined = joinRoom(game, { room, host: import.meta.env.VITE_ROOM_HOST as string | undefined, profileKey: 'siegeline.profile' });
+    ctl.attachNet(joined);
+    // For lobbyhop's e2e runner and the console.
+    (window as unknown as { lobbyhop: unknown }).lobbyhop = { room: joined };
   } else {
     ctl = (!seed && Controller.fromSave()) || new Controller();
     if (seed) ctl.newGame(seed);
@@ -42,9 +46,11 @@ async function main() {
 
   let last = performance.now();
   const loop = (now: number) => {
-    const dt = Math.min(0.1, (now - last) / 1000);
+    const raw = (now - last) / 1000;
+    const dt = Math.min(0.1, raw);
     last = now;
-    const alpha = ctl.tick(dt);
+    // A room paces itself (and sprints to catch up after a stall), so it gets the real elapsed time.
+    const alpha = ctl.tick(ctl.net ? raw : dt);
     view.frame(ctl, alpha, dt);
     view.updateAnchors(uiRoot);
     requestAnimationFrame(loop);

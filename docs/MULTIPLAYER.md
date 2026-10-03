@@ -72,35 +72,45 @@ client C ──cmd──►┘   runs the same sim   └──turn──► clie
 
 ## Code map
 
+The rooms, lobby, clock, turns, hashes, reconnects and hosting come from
+[lobbyhop](https://github.com/kellymilligan/Lobbyhop). Siegeline provides
+one game definition that wraps the sim.
+
 | File | Role |
 |---|---|
-| `src/net/protocol.ts` | Message types and constants shared by client and server. |
-| `src/net/room.ts` | `RoomCore`: lobby, seats, colours, the clock, validation, hashes. Platform-free. |
-| `src/net/client.ts` | `NetGame`: frontier-limited sim, turn application, catch-up. DOM-free. |
-| `src/net/socket.ts` | PartySocket glue (auto-reconnect), profile (name, colour, token). |
-| `server/index.ts` | Cloudflare Worker and the `Room` Durable Object (PartyServer), wrapping `RoomCore`. Also serves the built game. |
-| `tests/net.test.ts` | The in-memory harness (see below). |
-| `scripts/mp-e2e.mjs` | Two real browsers through a local Durable Object. |
+| `src/multiplayer/game.ts` | `defineLockstep` definition wrapping `createGame` / `applyCommand` / `step`. Settings (`fillBots`), the `HOUSES` palette, and idle-seat bot takeover via `hooks.idle` / `hooks.return`. |
+| `src/multiplayer/determinism.ts` | Scripted war for the cross-engine check (`recordHashes`). |
+| `src/app/controller.ts` | Bridges the `RoomClient` to the renderer: `advance(dt)`, `submit`, ghosts from `room.pending`, cache reset on `'snapshot'`. |
+| `src/ui/Lobby.tsx` | The war council, rendered from `RoomClient` fields. |
+| `server/index.ts` | Cloudflare Worker: `createRoomServer(game)` as the `Room` Durable Object, plus `createWorker()`. Rooms live at `/rooms/<code>`. |
+| `tests/net.test.ts` | lobbyhop's in-memory harness (see below). |
+| `scripts/e2e-actions.mjs` | What each browser does during `npx lobbyhop e2e`. |
+| `scripts/bot-brain.ts` | Siegeline's bot brain for `npx lobbyhop bot` (a headless player). |
 
 ## How it's verified
 
-- **`npm test`** runs the in-memory harness: a room plus 3 clients over a
-  simulated network. It checks that:
-  - 2.5 minutes of button-mashing war with 20–250 ms random per-message
-    latency ends with all three clients byte-identical to the server, with 0
-    desyncs;
-  - seat spoofing is rejected;
-  - reconnecting players rejoin in sync.
-- **`node scripts/mp-e2e.mjs`** needs `npm run server` and `npm run dev`
-  running. It drives two headless Chromium browsers:
-  1. both join a room and pick names and colours;
-  2. the host begins, both build, one sends;
-  3. the host pauses;
-  4. the script checks both clients came to rest on the same tick with the
-     same state hash.
-- **Caveat:** everything so far ran on V8 (Node, workerd and Chromium). The
-  simulation follows the cross-engine rules, but Firefox and Safari
-  determinism is untested until we add a Playwright Firefox/WebKit check in CI.
+- **`npm test`** runs lobbyhop's in-memory harness: a room plus clients over a
+  simulated network with 20–250 ms random per-message latency. It checks:
+  - 2.5 minutes of button-mashing war across 3 clients ends byte-identical to
+    the server, with 0 desyncs;
+  - without bots the realm has one lane per player, and a lone lord gets one
+    bot rival;
+  - seat spoofing and client-sent bot commands are rejected;
+  - a dropped lord is played by a bot after 20 s and gets their seat back on
+    return;
+  - reconnecting players get a snapshot and rejoin in sync.
+- **`npm run e2e:mp`** (with `npm run server` running) drives 3 headless
+  Chromium browsers:
+  1. they join through the war council;
+  2. the host begins;
+  3. they build, send and order ghosts;
+  4. lobbyhop pauses and checks every client came to rest on the same tick
+     with the same state hash.
+  - Add `?lite` to the URL (half resolution, no shadows) when several
+    software-rendered browsers share one machine.
+- **`npm run determinism`** replays a scripted 10-minute war in Node and every
+  installed browser engine and compares state hashes. CI runs it with
+  Chromium, Firefox and WebKit (`--require-all`).
 
 ## Run it locally
 
@@ -131,12 +141,8 @@ npm run deploy     # builds, then wrangler deploy
 
 ## Next steps
 
-- **Ghost builds:** show your tower instantly as a translucent preview until
-  its turn lands. This hides the ~150 ms input delay.
-- **Bot takeover** for players who've been away for a while.
-- **Firefox/WebKit determinism check** in CI, replaying a recorded command
-  log.
 - **Replays:** we already have the seed and every turn, so a replay is just
   the command log.
-- **Spectating:** a spectator is a client with no seat.
+- **Spectating:** lobbyhop already admits spectators; the UI needs a
+  spectator mode (no build bar, free camera).
 - **Public quick-match queue** with bot back-fill.

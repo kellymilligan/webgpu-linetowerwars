@@ -56,9 +56,9 @@ export interface GameOptions {
 export function createGame(seed: string, opts: GameOptions = {}): GameState {
   const count = opts.players ?? opts.seats?.length ?? 8;
   const seats = opts.seats;
-  const humans = new Set(seats ? seats.flatMap((x, i) => (x ? [i] : [])) : (opts.humans ?? [0]));
+  const humans = new Set(seats ? seats.flatMap((x, i) => (x ? [i] : [])) : (opts.humans ?? [0])); // lobbyhop-audit-ignore: local lookup
   const rng = seedRng(seed);
-  const taken = new Set(seats?.flatMap((x) => (x ? [x.colour] : [])) ?? []);
+  const taken = new Set(seats?.flatMap((x) => (x ? [x.colour] : [])) ?? []); // lobbyhop-audit-ignore: local lookup
   const spare = HOUSES.filter((h) => !taken.has(h.colour));
   let nextSpare = 0;
   const players: Player[] = [];
@@ -636,9 +636,9 @@ function towersAct(s: GameState, ev: GameEvent[]) {
 
 function moveProjectiles(s: GameState, ev: GameEvent[]) {
   if (s.projectiles.length === 0) return;
-  const creeps = new Map<number, Creep>();
+  const creeps = new Map<number, Creep>(); // lobbyhop-audit-ignore: per-call index
   for (const c of s.creeps) if (c.hp > 0 && c.delay <= 0) creeps.set(c.id, c);
-  const towers = new Map<number, Tower>();
+  const towers = new Map<number, Tower>(); // lobbyhop-audit-ignore: per-call index
   for (const t of s.towers) towers.set(t.id, t);
   const keep = [];
   for (const p of s.projectiles) {

@@ -13,7 +13,10 @@ import {
   tracePath,
 } from '../sim';
 import type { Command, GameEvent, GameState, PlaceCheck, SendId, TowerKind } from '../sim';
-import type { NetGame } from '../net/client';
+import type { RoomClient } from 'lobbyhop/client';
+import type { NetCommand, SiegeGame } from '../multiplayer/game';
+
+export type Room = RoomClient<SiegeGame>;
 
 export type Selection = { kind: 'tower'; id: number } | { kind: 'tile'; lane: number; x: number; y: number } | null;
 
@@ -52,13 +55,7 @@ export class Controller {
   version = 0;
   runId = 0;
   /** Set when playing in a multiplayer room; the server then owns the clock. */
-  net: NetGame | null = null;
-  /**
-   * Builds ordered in multiplayer that the server hasn't confirmed yet. They're
-   * drawn as translucent ghosts so the ~150 ms round trip doesn't feel laggy.
-   */
-  ghosts: { lane: number; x: number; y: number; kind: TowerKind; at: number }[] = [];
-  private netSnapshots = 0;
+  net: Room | null = null;
   /** Lane the camera should glide to (consumed by the scene). */
   focusRequest: number | null = null;
   private listeners = new Set<() => void>();
@@ -123,38 +120,48 @@ export class Controller {
     for (const fn of this.listeners) fn();
   }
 
-  /** Hooks this controller to a room; the net session drives state from then on. */
-  attachNet(net: NetGame) {
-    this.net = net;
+  /**
+   * Builds ordered in multiplayer that the server hasn't confirmed yet (lobbyhop's
+   * `pending`). They're drawn as translucent ghosts so the round trip doesn't feel laggy.
+   */
+  get ghosts(): { lane: number; x: number; y: number; kind: TowerKind }[] {
+    if (!this.net) return [];
+    const out = [];
+    for (const p of this.net.pending) if (p.cmd.type === 'build') out.push({ lane: this.me, x: p.cmd.x, y: p.cmd.y, kind: p.cmd.kind });
+    return out;
+  }
+
+  /** Hooks this controller to a lobbyhop room; the room drives state from then on. */
+  attachNet(room: Room) {
+    this.net = room;
     this.speed = 1;
-    net.onNotice = (t) => {
-      // A rejection (e.g. not enough gold) most likely voids our pending builds.
-      this.ghosts = [];
-      this.showToast(t);
-    };
-    net.onChange = () => {
-      this.me = net.seat;
-      if (net.state && net.snapshots !== this.netSnapshots) {
-        const first = this.netSnapshots === 0 || this.state !== net.state;
-        this.netSnapshots = net.snapshots;
-        this.state = net.state;
-        this.runId++;
-        this.selection = null;
-        this.hover = null;
-        this.events = [];
-        this.ghosts = [];
-        if (first) this.focusRequest = this.me;
-      }
+    let first = true;
+    room.on('notice', (t) => this.showToast(t));
+    // The state was replaced wholesale (start, rejoin, resync): drop anything keyed on the old one.
+    room.on('snapshot', (state) => {
+      this.me = room.seat ?? 0;
+      this.state = state;
+      this.runId++;
+      this.selection = null;
+      this.hover = null;
+      this.events = [];
+      if (first) this.focusRequest = this.me;
+      first = false;
       this.notify(true);
-    };
+    });
+    room.on('change', () => {
+      this.me = room.seat ?? 0;
+      this.notify(true);
+    });
   }
 
   dispatch(cmd: Command): boolean {
     if (this.net) {
       // Intent only: the server validates it and it lands with the next turn.
       if (!this.net.state || this.net.phase !== 'playing') return false;
-      this.net.submit(cmd);
-      if (cmd.type === 'build') this.ghosts.push({ lane: this.me, x: cmd.x, y: cmd.y, kind: cmd.kind, at: performance.now() });
+      // The server stamps our seat, so the command goes without `player`.
+      const { player: _, ...intent } = cmd;
+      this.net.submit(intent as NetCommand);
       if (cmd.type === 'sell') this.selection = null;
       this.notify(true);
       return true;
@@ -261,19 +268,14 @@ export class Controller {
 
   private tickNet(dtReal: number): number {
     const net = this.net!;
-    if (!net.state) {
+    // Never gated on pause: while the host pauses, every client drains to the same frontier.
+    const pending = net.pending.length;
+    const { state, events, alpha } = net.advance(dtReal);
+    if (!state) {
       if (this.dirty) this.notify();
       return 1;
     }
-    const { events, alpha } = net.advance(dtReal);
-    if (this.ghosts.length) {
-      // Confirmed builds replace their ghosts; anything unconfirmed after 2 s is dropped.
-      const now = performance.now();
-      const built = new Set(events.flatMap((e) => (e.type === 'built' && e.lane === this.me ? [`${e.x},${e.y}`] : [])));
-      const before = this.ghosts.length;
-      this.ghosts = this.ghosts.filter((g) => !built.has(`${g.x},${g.y}`) && now - g.at < 2000);
-      if (this.ghosts.length !== before) this.notify(true);
-    }
+    if (net.pending.length !== pending) this.notify(true);
     if (events.length) {
       this.events.push(...events);
       this.narrate(events);
