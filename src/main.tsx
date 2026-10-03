@@ -31,7 +31,9 @@ async function main() {
   if (room) {
     // Multiplayer: a quiet placeholder realm shows behind the lobby until the war starts.
     ctl = new Controller(createGame('council', { humans: [] }));
-    const joined = joinRoom(game, { room, host: import.meta.env.VITE_ROOM_HOST as string | undefined, profileKey: 'siegeline.profile' });
+    // Dev aid: ?lag=250 adds a simulated 250 ms round trip, to feel ghosts and interpolation under a slow link.
+    const lag = Number(params.get('lag') ?? 0);
+    const joined = joinRoom(game, { room, host: import.meta.env.VITE_ROOM_HOST as string | undefined, profileKey: 'siegeline.profile', simulateLatency: lag });
     ctl.attachNet(joined);
     mountLobby(joined, {
       title: 'War council',

@@ -26,6 +26,7 @@ npm run dev                       # then click "Multiplayer" and share the link
 
 URL params:
 - `?room=code` joins a multiplayer room.
+- `?room=code&lag=250` adds a simulated 250 ms round trip (dev aid, for feeling ghosts under a slow link).
 - `?seed=abc` starts a fixed seed.
 - `?renderer=webgl|webgpu` forces a backend.
 - `?autoplay` hands your seat to a bot.

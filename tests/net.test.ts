@@ -4,11 +4,10 @@ import type { Harness } from 'lobbyhop/testing';
 import { game } from '../src/multiplayer/game';
 import type { NetCommand, SiegeGame } from '../src/multiplayer/game';
 import { SENDS, TOWER_KINDS } from '../src/sim';
-import type { GameState } from '../src/sim';
 import { nextFloat, nextInt } from '../src/sim/rng';
 
-/** The server's copy of the war (the harness exposes the engine untyped). */
-const serverState = (h: Harness<SiegeGame>) => (h.room.engine as unknown as { state: GameState | null }).state!;
+/** The server's authoritative copy of the war. */
+const serverState = (h: Harness<SiegeGame>) => h.serverState()!;
 
 describe('Siegeline rooms over a lossy-latency network (lobbyhop harness)', () => {
   it('lobby assigns seats, unique house colours and a host', () => {

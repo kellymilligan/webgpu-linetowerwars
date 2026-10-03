@@ -12,13 +12,13 @@ import type { NetCommand } from './game';
 export function runScenario(seed: string, minutes: number): number[] {
   return recordHashes(game, {
     seed,
-    // Two "humans" follow a seeded script; the other six seats are bot lords.
-    seats: [0, 3],
+    // Two "humans" (seats 0 and 1, as a room seats them) follow a seeded script; bot lords hold the rest.
+    seats: 2,
     settings: { fillBots: true },
     ticks: minutes * 60 * game.tickRate,
     input: (t, rng) => {
       if (t % 20 !== 0) return [];
-      return [0, 3].map((seat): [number, NetCommand] =>
+      return [0, 1].map((seat): [number, NetCommand] =>
         nextInt(rng, 3) > 0
           ? [seat, { type: 'build', x: nextInt(rng, 11), y: 2 + nextInt(rng, 30), kind: TOWER_KINDS[nextInt(rng, TOWER_KINDS.length)] }]
           : [seat, { type: 'send', send: SENDS[nextInt(rng, SENDS.length)].id }],

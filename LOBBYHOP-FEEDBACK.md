@@ -15,6 +15,27 @@ session.
 Most of the friction is in the **e2e tool** with custom lobbies and heavy
 renderers.
 
+**Status (lobbyhop 0.2.0).** Nearly everything here shipped in 0.2.0, and
+Siegeline now uses it: `--lobby api` fallback, screenshot timeouts that skip
+instead of crash, `--viewport`/`--no-screenshots`, `act`'s `ctx`,
+`simulateLatency` (replacing our `WebSocket.send` monkeypatch), the
+`canStart` hook, contiguous `recordHashes` seats, `h.serverState()`,
+`JoinedRoom<G>`, `bot --status`, optional `esbuild`/`playwright` peers, and
+docs for items 5, 8, 9, 11 and 16. Not adopted yet: `canStart` (Siegeline
+keeps its "lone lord gets a bot rival" rule).
+
+New in 0.2.0:
+
+18. **Lowering simulated latency to 0 can reorder messages.** *(low)*
+    - `delayed()` returns `fn()` immediately when the lag is 0, ignoring
+      `lastAt`, so a message received after `setSimulatedLatency(0)` can
+      overtake ones still queued from the earlier lag. Inbound, that would
+      apply lockstep turns out of order.
+    - Our e2e avoids it by switching the lag on and off within one
+      synchronous block.
+    - **Suggestion:** when the lag is 0, still wait for `lastAt[dir]` if it's
+      in the future.
+
 Each item has a severity, what happened, the workaround, and a suggestion.
 
 ## e2e (`npx lobbyhop e2e`)
