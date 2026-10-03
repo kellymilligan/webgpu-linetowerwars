@@ -1,9 +1,12 @@
 import { Color } from 'three/webgpu';
+import { MUSTER_TIME } from '../sim/data/rules';
 
 /**
- * Lighting moods. The match cycles through them (dawn → day → golden hour →
- * dusk → night) so the realm feels alive over a 25-minute war. Each preset
- * is a full grade: sun, sky, fog, ground tint, bloom and colour grading.
+ * Lighting moods. A war has one bleak arc and never a bright day: cold
+ * overcast at the muster, a bruised dusk as it drags on, and black night for
+ * the late game and sudden death. Firelight (gates, braziers, torches) is the
+ * only warm colour, and it matters more as the light fails. Each preset is a
+ * full grade: sun, sky, fog, bloom and colour grading.
  */
 export interface LightPreset {
   sun: string;
@@ -18,70 +21,46 @@ export interface LightPreset {
   horizon: string;
   fog: string;
   exposure: number;
-  /** Multiplier on torches, fire and other glowing things. */
+  /** Multiplier on firelight: torches, braziers, the gates. */
   glow: number;
   bloom: number;
   saturation: number;
-  /** Warm/cool tint applied in grading (multiplied into the image). */
+  /** Cold/warm tint applied in grading (multiplied into the image). */
   tint: string;
-  grass: string;
 }
 
-export type Mood = 'dawn' | 'day' | 'golden' | 'dusk' | 'night';
+export type Mood = 'overcast' | 'dusk' | 'night';
 
-// The North: cold, misty and muted, with a low warm sun that makes the
-// heather and snow glow when it breaks through.
 export const PRESETS: Record<Mood, LightPreset> = {
-  dawn: {
-    sun: '#ffc6a8', sunIntensity: 2.3, sunElevation: 0.24, sunAzimuth: -0.7,
-    hemiSky: '#a7b2d4', hemiGround: '#38343a', hemiIntensity: 0.95,
-    zenith: '#5f6f9c', horizon: '#e2b8ad', fog: '#a9a6b3',
-    exposure: 1.0, glow: 0.8, bloom: 0.3, saturation: 0.95, tint: '#f1ecf4', grass: '#525e3e',
-  },
-  day: {
-    sun: '#fff2df', sunIntensity: 3.1, sunElevation: 0.62, sunAzimuth: 0.6,
-    hemiSky: '#c2cfde', hemiGround: '#3a3934', hemiIntensity: 0.9,
-    zenith: '#7590b2', horizon: '#d3dbe2', fog: '#b3bcc6',
-    exposure: 0.95, glow: 0.4, bloom: 0.18, saturation: 0.92, tint: '#eef2f8', grass: '#5d6a45',
-  },
-  golden: {
-    sun: '#ffbf80', sunIntensity: 3.4, sunElevation: 0.3, sunAzimuth: 1.9,
-    hemiSky: '#a9b6cf', hemiGround: '#3c3530', hemiIntensity: 0.8,
-    zenith: '#61789f', horizon: '#efc394', fog: '#c2b3a3',
-    exposure: 1.02, glow: 0.7, bloom: 0.3, saturation: 1.05, tint: '#fff3e6', grass: '#69683f',
+  overcast: {
+    sun: '#c3c9d2', sunIntensity: 2.6, sunElevation: 0.45, sunAzimuth: 1.05,
+    hemiSky: '#8a94a2', hemiGround: '#1d1e22', hemiIntensity: 1.2,
+    zenith: '#353c47', horizon: '#6a717b', fog: '#555c66',
+    exposure: 0.95, glow: 1.0, bloom: 0.35, saturation: 0.55, tint: '#dfe5ec',
   },
   dusk: {
-    sun: '#ff8a5a', sunIntensity: 1.9, sunElevation: 0.16, sunAzimuth: 2.4,
-    hemiSky: '#8790b8', hemiGround: '#2c2830', hemiIntensity: 0.8,
-    zenith: '#3a4472', horizon: '#d08670', fog: '#776d80',
-    exposure: 1.05, glow: 1.1, bloom: 0.42, saturation: 1.0, tint: '#f2e4ea', grass: '#474e38',
+    sun: '#9a8c98', sunIntensity: 1.5, sunElevation: 0.25, sunAzimuth: 0.9,
+    hemiSky: '#56607a', hemiGround: '#121317', hemiIntensity: 0.95,
+    zenith: '#1b212c', horizon: '#45414c', fog: '#30333c',
+    exposure: 1.0, glow: 1.5, bloom: 0.5, saturation: 0.5, tint: '#d4d9e4',
   },
   night: {
-    sun: '#9fb4ff', sunIntensity: 0.8, sunElevation: 0.85, sunAzimuth: -2.2,
-    hemiSky: '#3c4f94', hemiGround: '#12151f', hemiIntensity: 0.55,
-    zenith: '#0d1336', horizon: '#26325f', fog: '#1a2246',
-    exposure: 1.05, glow: 1.9, bloom: 0.7, saturation: 0.95, tint: '#c9d4ff', grass: '#34493c',
+    sun: '#7a8db5', sunIntensity: 0.8, sunElevation: 0.9, sunAzimuth: -0.4,
+    hemiSky: '#38466b', hemiGround: '#0a0b10', hemiIntensity: 0.9,
+    zenith: '#05070c', horizon: '#141925', fog: '#10141c',
+    exposure: 1.15, glow: 2.1, bloom: 0.7, saturation: 0.45, tint: '#c3cbde',
   },
 };
 
-/** The day cycle: [start fraction, mood]. One full day every DAY_SECONDS of war. */
-const CYCLE: [number, Mood][] = [
-  [0.0, 'dawn'],
-  [0.08, 'day'],
-  [0.42, 'golden'],
-  [0.58, 'dusk'],
-  [0.68, 'night'],
-  [0.92, 'dawn'],
-];
-export const DAY_SECONDS = 8 * 60;
-
 /** The mood for a point in the match (seconds since the muster began). */
 export function moodAt(seconds: number): Mood {
-  const f = (((seconds + DAY_SECONDS * 0.05) % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS / DAY_SECONDS;
-  let mood: Mood = 'dawn';
-  for (const [start, m] of CYCLE) if (f >= start) mood = m;
-  return mood;
+  const battle = seconds - MUSTER_TIME;
+  if (battle < 6 * 60) return 'overcast';
+  if (battle < 14 * 60) return 'dusk';
+  return 'night';
 }
+
+const COLOURS = ['sun', 'hemiSky', 'hemiGround', 'zenith', 'horizon', 'fog', 'tint'] as const;
 
 /** A live, lerpable copy of a preset with Color objects. */
 export class LightState {
@@ -92,7 +71,6 @@ export class LightState {
   horizon = new Color();
   fog = new Color();
   tint = new Color();
-  grass = new Color();
   sunIntensity = 0;
   sunElevation = 0;
   sunAzimuth = 0;
@@ -107,7 +85,7 @@ export class LightState {
   }
 
   set(p: LightPreset) {
-    for (const k of ['sun', 'hemiSky', 'hemiGround', 'zenith', 'horizon', 'fog', 'tint', 'grass'] as const) this[k].set(p[k]);
+    for (const k of COLOURS) this[k].set(p[k]);
     this.sunIntensity = p.sunIntensity;
     this.sunElevation = p.sunElevation;
     this.sunAzimuth = p.sunAzimuth;
@@ -121,7 +99,7 @@ export class LightState {
   /** Moves toward a preset by factor t (0..1). */
   approach(p: LightPreset, t: number) {
     const c = new Color();
-    for (const k of ['sun', 'hemiSky', 'hemiGround', 'zenith', 'horizon', 'fog', 'tint', 'grass'] as const) this[k].lerp(c.set(p[k]), t);
+    for (const k of COLOURS) this[k].lerp(c.set(p[k]), t);
     this.sunIntensity += (p.sunIntensity - this.sunIntensity) * t;
     this.sunElevation += (p.sunElevation - this.sunElevation) * t;
     this.sunAzimuth += shortestAngle(this.sunAzimuth, p.sunAzimuth) * t;

@@ -128,7 +128,8 @@ function makeMaterials(atlas: Texture, chars: Record<string, Texture>) {
 
   for (const [name, tex] of Object.entries(chars)) {
     const c = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0 });
-    c.colorNode = weather(texture(tex, uv()).rgb, 0.2);
+    // Invaders read as dark, drained silhouettes against the firelight.
+    c.colorNode = weather(texture(tex, uv()).rgb, 0.8).mul(0.45);
     MATS[`char:${name}`] = c;
   }
 }

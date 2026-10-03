@@ -1,133 +1,240 @@
-import { Color, Group, Mesh, MeshStandardNodeMaterial, PlaneGeometry, Vector3 } from 'three/webgpu';
-import { float, fract, mix, mx_noise_float, positionWorld, smoothstep, time, uniform, vec2, vec3 } from 'three/tsl';
-import { GATE_ROWS, KEEP_ROWS, LANE_H, LANE_W } from '../sim/data/map';
-import { assetsReady, fitHeight, fitWidth, snowCover } from './assets';
+import { BufferAttribute, BufferGeometry, Color, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardNodeMaterial, PlaneGeometry, PointLight, Vector3 } from 'three/webgpu';
+import { float, fract, mix, mx_noise_float, positionWorld, smoothstep, uniform, vec2, vec3 } from 'three/tsl';
+import { LANE_H, LANE_W, MAX_PLAYERS } from '../sim/data/map';
 import { Batch } from './batch';
-import { laneCount, laneOriginX, LANE_GAP, toWorldZ, worldMaxX, worldMinX } from './coords';
-import { BatchSet, GEO, MATS, PALETTE, part, pushModel } from './parts';
-import type { GeoKey, MatKey, Part } from './parts';
+import { laneCount, laneOriginX, STRIDE, toWorldZ, worldMaxX, worldMinX } from './coords';
+import { BOULDERS, BRUSH_KINDS, DEAD_TREES } from './flora';
+import { fbm, makeNoise, mulberry, smooth } from './noise';
+import { BatchSet, GEO, MATS, PALETTE } from './parts';
+import type { GeoKey } from './parts';
+import { fireLevel } from './rock';
 
-/** Tiny seeded PRNG for cosmetic scatter, so the scenery is the same every load. */
-function mulberry(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+/*
+ * The Line: a sheer rock range runs across the top of the realm. Each house's
+ * citadel is a great gate cut into its face, lit from the deep. From each gate
+ * a canyon runs down toward the viewer, walled by a high, broken plateau, and
+ * opens onto a bleak plain where the raiders gather. The canyons are the only
+ * way in.
+ */
+
+/** Plateau height above the canyon floor. */
+const PH = 3.4;
+/** World z of the canyon mouths (row 0, nearest the camera) and of the far end of the lanes. */
+const Z_MOUTH = toWorldZ(0);
+const Z_END = toWorldZ(LANE_H);
+/** The cliff face's base line, just behind the last row. */
+const ZC = Z_END - 1.6;
+const CLIFF_H = 24;
+/** Lean of the cliff face (z per unit of height). */
+const LEAN = 0.12;
+/** Citadel gate opening: width, height and recess depth. */
+const AW = 8.6;
+const AH = 9;
+const RECESS = 3.2;
+
+const nWall = makeNoise(5);
+const nTop = makeNoise(9);
+const nCliff = makeNoise(21);
+const nCliff2 = makeNoise(33);
+
+/** How far a canyon wall's foot sits back from the lane edge (always clear of the lane). */
+const jag = (z: number, lane: number, side: number) => 0.1 + 0.4 * (nWall(z * 0.55 + lane * 13.1 + side * 5.3, 3.7) * 0.5 + 0.5);
+
+/** 0 on the canyon floor rising to 1 on the plateau, `d` from the lane edge. */
+function wallRise(d: number, z: number, lane: number, side: number): number {
+  const j = jag(z, lane, side);
+  let t = smooth(j, j + 0.75, d);
+  // Crags and ledges in the wall face.
+  t += nWall(d * 2.2 + lane * 3.1, z * 1.3 + side * 7) * 0.22 * t * (1 - t) * 4;
+  return Math.max(0, Math.min(1, t));
 }
 
-// ── Procedural scenery ('house' is just the per-instance tint here) ───────
-const SCOTS_PINE: Part[] = [
-  part('cyl', 'woodDark', [0, 0, 0], [0.14, 1.1, 0.14]),
-  part('cone', 'house', [0, 0.8, 0], [1.0, 1.0, 1.0], undefined, 'foliage'),
-  part('cone', 'house', [0, 1.35, 0], [0.75, 0.9, 0.75], undefined, 'foliage'),
-  part('cone', 'house', [0, 1.85, 0], [0.45, 0.7, 0.45], undefined, 'foliage'),
-];
-const BIRCH: Part[] = [
-  part('cyl', 'birch', [0, 0, 0], [0.1, 1.3, 0.1]),
-  part('rock', 'house', [0, 1.3, 0], [0.9, 1.2, 0.9], undefined, 'foliage'),
-  part('rock', 'house', [0.2, 1.05, 0.1], [0.55, 0.7, 0.55], undefined, 'foliage'),
-];
-const HEATHER: Part[] = [
-  part('rock', 'house', [0, 0.04, 0], [0.55, 0.28, 0.55], undefined, 'foliage'),
-  part('rock', 'house', [0.22, 0.02, 0.12], [0.35, 0.22, 0.35], undefined, 'foliage'),
-];
-const TUFT: Part[] = [
-  part('cone', 'house', [0, 0, 0], [0.07, 0.42, 0.07], [0.15, 0, 0.1], 'foliage'),
-  part('cone', 'house', [0.07, 0, 0.03], [0.06, 0.34, 0.06], [-0.1, 0, -0.25], 'foliage'),
-  part('cone', 'house', [-0.06, 0, -0.04], [0.06, 0.38, 0.06], [0.2, 0, 0.3], 'foliage'),
-];
-const DEAD_TREE: Part[] = [
-  part('cyl', 'woodDark', [0, 0, 0], [0.14, 1.6, 0.14]),
-  part('cyl', 'woodDark', [0.2, 1.0, 0], [0.07, 0.8, 0.07], [0, 0, -0.8]),
-  part('cyl', 'woodDark', [-0.15, 1.2, 0], [0.06, 0.6, 0.06], [0, 0, 0.9]),
-];
+/** The plateaus end raggedly at the canyon mouths; the ground falls to the plain. */
+const mouthEdge = (x: number) => Z_MOUTH + 1.2 + fbm(nTop, x * 0.13, 7.7, 3) * 2.6;
+const mouth = (x: number, z: number) => smooth(mouthEdge(x) + 3.5, mouthEdge(x) - 1.2, z);
+/** The ground ramps up into the foot of the range. */
+const backRamp = (z: number) => smooth(Z_END + 6, ZC - 1, z) * 2.4;
 
-const PINE_GREENS = ['#24402f', '#2a4734', '#2f4d38', '#223a2e', '#30503c'];
-const BIRCH_LEAVES = ['#8a7a2e', '#a0702a', '#6f7a34', '#b0802c'];
-const HEATHERS = ['#5e3c5c', '#6c4668', '#523650', '#74506e', '#4a3448'];
-const BRACKEN = ['#8a5a2a', '#7a4e26', '#96683a'];
+function plateauTop(x: number, z: number) {
+  return fbm(nTop, x * 0.21, z * 0.21, 3) * 0.75 + fbm(nTop, x * 0.9 + 40, z * 0.9, 2) * 0.18;
+}
 
-const RIVER_Z0 = LANE_H / 2 + 7.2;
-const RIVER_Z1 = LANE_H / 2 + 12.5;
+/** Terrain height anywhere outside the canyon floors. */
+function heightAt(x: number, z: number): number {
+  const n = laneCount();
+  const first = laneOriginX(0);
+  const last = laneOriginX(n - 1) + LANE_W;
+  let t: number;
+  let extra = 0;
+  if (x < first || x > last) {
+    // The flanks: plateau rising into hills toward the edges of the world.
+    const d = x < first ? first - x : x - last;
+    t = wallRise(d, z, x < first ? -1 : n, x < first ? -1 : 1);
+    extra = Math.max(0, d - 6) * 0.3 * (0.6 + 0.4 * (fbm(nTop, x * 0.05, z * 0.05, 2) + 1));
+    const m = Math.max(mouth(x, z), smooth(12, 40, d));
+    return (PH * t + t * plateauTop(x, z) + extra + backRamp(z) * t) * m - 0.06 * (1 - t);
+  }
+  const lane = Math.min(n - 1, Math.floor((x - first) / STRIDE));
+  const local = x - laneOriginX(lane);
+  if (local <= LANE_W) return 0;
+  const t1 = wallRise(local - LANE_W, z, lane, 1);
+  const t2 = wallRise(STRIDE - local, z, lane + 1, -1);
+  t = Math.min(t1, t2);
+  return (PH * t + t * plateauTop(x, z) + backRamp(z) * t) * mouth(x, z) - 0.06 * (1 - t);
+}
+
+/** An indexed grid over (xs × zs) with heights from `f`, facing up. */
+function heightGrid(xs: number[], zs: number[], f: (x: number, z: number) => number): BufferGeometry {
+  const nx = xs.length;
+  const pos = new Float32Array(nx * zs.length * 3);
+  let k = 0;
+  for (const z of zs) for (const x of xs) {
+    pos[k++] = x;
+    pos[k++] = f(x, z);
+    pos[k++] = z;
+  }
+  const idx: number[] = [];
+  for (let iz = 0; iz < zs.length - 1; iz++) {
+    for (let ix = 0; ix < nx - 1; ix++) {
+      const a = iz * nx + ix;
+      const b = a + nx;
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/** An indexed grid over (xs × ys) with depth z from `f`, facing +z (toward the camera). */
+function faceGrid(xs: number[], ys: number[], f: (x: number, y: number) => number): BufferGeometry {
+  const nx = xs.length;
+  const pos = new Float32Array(nx * ys.length * 3);
+  let k = 0;
+  for (const y of ys) for (const x of xs) {
+    pos[k++] = x;
+    pos[k++] = y;
+    pos[k++] = f(x, y);
+  }
+  const idx: number[] = [];
+  for (let iy = 0; iy < ys.length - 1; iy++) {
+    for (let ix = 0; ix < nx - 1; ix++) {
+      const a = iy * nx + ix;
+      const c = a + nx;
+      idx.push(a, a + 1, c, a + 1, c + 1, c);
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+const range = (a: number, b: number, step: number) => {
+  const out: number[] = [];
+  for (let v = a; v < b; v += step) out.push(v);
+  out.push(b);
+  return out;
+};
+
+/** Sample positions across a span, dense near both ends (where the walls are). */
+function edgeDense(a: number, b: number, edge = 1.6, fine = 0.12, coarse = 0.4): number[] {
+  const out: number[] = [];
+  let v = a;
+  while (v < b) {
+    out.push(v);
+    v += Math.min(v - a, b - v) < edge ? fine : coarse;
+  }
+  out.push(b);
+  return out;
+}
+
+const laneCx = (lane: number) => laneOriginX(lane) + LANE_W / 2;
+
+/** Depth of the range's face at (x, y): crags, ledges, and a carved recess at each citadel. */
+function cliffZ(x: number, y: number): number {
+  let z = ZC - y * LEAN + fbm(nCliff, x * 0.11, y * 0.13, 4) * 1.4 + nCliff2(x * 0.55, y * 0.6) * 0.4;
+  // Vertical fissures: deep, narrow grooves give the face a sheer, columnar grain.
+  const col = Math.abs(Math.sin(x * 1.15 + nCliff(x * 0.08, y * 0.04) * 3.2));
+  z -= Math.pow(1 - col, 3) * 0.75;
+  // Ledges: the face steps back at each stratum.
+  const s = y * 0.34 + 0.3 * nCliff(x * 0.05, 3.3);
+  z -= smooth(0.55, 0.64, s - Math.floor(s)) * 0.55;
+  const n = laneCount();
+  for (let lane = 0; lane < n; lane++) {
+    const dx = Math.abs(x - laneCx(lane));
+    if (dx > AW / 2 + 3) continue;
+    // A dressed façade above each gate: the rock is cut back flat.
+    const facade = smooth(AW / 2 + 2.6, AW / 2 + 1.2, dx) * smooth(21, 18, y);
+    z = z + (ZC - y * LEAN - 0.35 - z) * facade * 0.9;
+    // The gate recess itself.
+    const inside = smooth(AW / 2 + 0.2, AW / 2 - 0.1, dx) * smooth(AH + 0.5, AH - 0.1, y);
+    z = z + (ZC - RECESS - z) * inside;
+  }
+  return Math.min(z, Z_END - 0.35);
+}
+
+interface GateWindow {
+  lane: number;
+  x: number;
+  y: number;
+  z: number;
+  h: number;
+}
 
 /**
- * A Highland glen: moorland of heather, bracken and old snow under drifting
- * cloud shadow; a walled road per house with a gatehouse at its head and a
- * castle at its foot; a peaty river; crofts and pinewoods; snow-capped
- * mountains all around.
+ * The realm's terrain and scenery. Static geometry is rebuilt when the lane
+ * count changes; gates, fires, banners and weather are drawn per frame.
  */
 export class Board {
   readonly group = new Group();
   readonly statics = new BatchSet();
+  /** Brush in frustum-culled chunks: most of it is off screen at any time. */
+  private brushChunks = new Map<string, BatchSet>();
+  private brushGroup = new Group();
   readonly gridOpacity = uniform(0.35);
-  /** Grass tint as a vec3 uniform (colour uniforms don't type-check with vec3 maths). */
-  readonly grass = uniform(new Vector3(0.35, 0.4, 0.27));
+  /** World x of the first lane's edge, for the canyon floor's shading. */
+  private laneFirst = uniform(0);
   private keeps = new BatchSet();
-  private motes = new Batch(GEO.sphere, MATS.glow, 256, false);
-  private mote: { x: number; y: number; z: number; p: number }[] = [];
-  private fallen: boolean[] = [];
+  private sleet = new Batch(GEO.box, new MeshBasicMaterial({ color: '#9aa4b0', transparent: true, opacity: 0.4, depthWrite: false }), 512, false);
+  private flakes: { x: number; y: number; z: number; s: number }[] = [];
+  private lights: PointLight[] = [];
+  private windows: GateWindow[] = [];
   private houses: Color[] = [];
   private housesKey = '';
   private layoutGroup = new Group();
-  private groundMat = new MeshStandardNodeMaterial({ roughness: 1 });
   private roadMat = new MeshStandardNodeMaterial({ roughness: 0.95 });
-  private cobbleMat = new MeshStandardNodeMaterial({ roughness: 0.9 });
-  private waterMat = new MeshStandardNodeMaterial({ roughness: 0.08, metalness: 0.15 });
   private lanes = 0;
 
   constructor() {
     const p = positionWorld.xz;
-    // Drifting cloud shadows shared by every ground surface.
-    const cloud = smoothstep(0.15, 0.65, mx_noise_float(p.mul(0.02).add(vec2(time.mul(0.016), time.mul(0.006)))).mul(0.5).add(0.5));
-    const shade = mix(float(1), float(0.62), cloud);
-
-    // Moorland: olive grass, wide drifts of heather, rusty bracken, peat, and
-    // old snow lying thicker towards the north (the gates, −z).
-    const n1 = mx_noise_float(p.mul(0.05)).mul(0.5).add(0.5);
-    const n2 = mx_noise_float(p.mul(0.3)).mul(0.5).add(0.5);
-    const n3 = mx_noise_float(p.mul(0.09).add(vec2(17, 3))).mul(0.5).add(0.5);
-    const n4 = mx_noise_float(p.mul(0.14).add(vec2(-9, 41))).mul(0.5).add(0.5);
-    // Fine breakup so patches read as growth, not flat blobs.
-    const fine = mx_noise_float(p.mul(1.7)).mul(0.5).add(0.5);
-    const grain = mx_noise_float(p.mul(4.1)).mul(0.5).add(0.5);
-    let ground = mix(this.grass.mul(0.72), this.grass.mul(1.08), n1.mul(0.5).add(n2.mul(0.3)).add(grain.mul(0.2)));
-    const heatherMask = smoothstep(0.45, 0.7, n3.mul(0.65).add(fine.mul(0.35)));
-    ground = mix(ground, mix(vec3(0.22, 0.13, 0.22), vec3(0.34, 0.2, 0.32), grain), heatherMask.mul(0.75));
-    ground = mix(ground, vec3(0.34, 0.2, 0.1), smoothstep(0.6, 0.8, n4.mul(0.7).add(fine.mul(0.3))).mul(0.55));
-    ground = mix(ground, vec3(0.12, 0.1, 0.08), smoothstep(0.72, 0.9, n2).mul(smoothstep(0.55, 0.75, n1)).mul(0.5));
-    const north = smoothstep(10, -30, positionWorld.z);
-    // Old snow: soft-edged and broken by the grain; thicker towards the north.
-    const snowN = mx_noise_float(p.mul(0.16).add(vec2(5, 5))).mul(0.5).add(0.5).mul(0.75).add(fine.mul(0.25));
-    const drift = smoothstep(float(0.74).sub(north.mul(0.2)).sub(snowCover.mul(0.1)), float(0.9).sub(north.mul(0.15)), snowN);
-    ground = mix(ground, vec3(0.84, 0.87, 0.92), drift.mul(0.9));
-    const bank = smoothstep(2.0, 0.4, positionWorld.z.sub((RIVER_Z0 + RIVER_Z1) / 2).abs().sub((RIVER_Z1 - RIVER_Z0) / 2));
-    ground = mix(ground, vec3(0.32, 0.3, 0.27), bank.mul(0.85));
-    this.groundMat.colorNode = ground.mul(shade);
-
-    // Roads: dark peaty earth with gravel and a faint build grid; snow along the verges.
-    const earth = mix(vec3(0.1, 0.075, 0.055), vec3(0.19, 0.15, 0.11), mx_noise_float(p.mul(0.8)).mul(0.5).add(0.5));
-    const gravel = smoothstep(0.55, 0.8, mx_noise_float(p.mul(5.5))).mul(0.1);
+    // Canyon floor: trodden, frozen mud and grit, frost in the ruts, and a faint build grid.
+    const n1 = mx_noise_float(p.mul(0.35)).mul(0.5).add(0.5);
+    const n2 = mx_noise_float(p.mul(1.9)).mul(0.5).add(0.5);
+    const mud = mix(vec3(0.07, 0.066, 0.062), vec3(0.17, 0.158, 0.142), n1.mul(0.6).add(n2.mul(0.4)));
+    const grit = smoothstep(0.6, 0.85, mx_noise_float(p.mul(6.5))).mul(0.06);
+    const frost = smoothstep(0.8, 0.95, mx_noise_float(p.mul(0.7).add(vec2(5, 2))).mul(0.5).add(0.5)).mul(0.35);
     const f = fract(p);
     const edge = f.x.min(f.y).min(float(1).sub(f.x)).min(float(1).sub(f.y));
-    const line = float(1).sub(smoothstep(0.0, 0.04, edge));
-    const slush = smoothstep(0.78, 0.95, mx_noise_float(p.mul(1.3).add(vec2(3, 9))).mul(0.5).add(0.5)).mul(0.18).mul(snowCover);
-    this.roadMat.colorNode = mix(mix(earth.add(gravel), vec3(0.7, 0.72, 0.76), slush), vec3(0.4, 0.38, 0.34), line.mul(this.gridOpacity)).mul(shade);
+    const line = float(1).sub(smoothstep(0.0, 0.035, edge));
+    const ground = mix(mud.add(grit), vec3(0.2, 0.21, 0.23), frost);
+    // Fake occlusion at the foot of the canyon walls.
+    const local = positionWorld.x.sub(this.laneFirst).mod(STRIDE);
+    const ao = mix(float(0.45), float(1), smoothstep(0.0, 1.8, local).mul(smoothstep(LANE_W, LANE_W - 1.8, local)));
+    this.roadMat.colorNode = mix(ground.mul(ao), vec3(0.42, 0.42, 0.4), line.mul(this.gridOpacity));
 
-    // Cobbles: grey granite setts with dark joints.
-    const c = fract(p.mul(vec2(2.2, 3.1)));
-    const cEdge = c.x.min(c.y).min(float(1).sub(c.x)).min(float(1).sub(c.y));
-    const stone = mix(vec3(0.22, 0.22, 0.23), vec3(0.38, 0.38, 0.39), mx_noise_float(p.mul(3.3)).mul(0.5).add(0.5));
-    this.cobbleMat.colorNode = mix(vec3(0.07, 0.07, 0.075), stone, smoothstep(0.03, 0.09, cEdge)).mul(shade);
-
-    // River: peat-dark water with cold glints.
-    const flow = p.mul(vec2(0.5, 1.4)).add(vec2(time.mul(0.35), 0));
-    const glint = smoothstep(0.6, 0.88, mx_noise_float(flow.mul(1.8))).mul(0.28);
-    const depth = mx_noise_float(p.mul(0.2).add(vec2(time.mul(0.05), 0))).mul(0.5).add(0.5);
-    this.waterMat.colorNode = mix(vec3(0.05, 0.08, 0.1), vec3(0.13, 0.2, 0.23), depth).add(glint).mul(mix(float(1), float(0.8), cloud));
-
-    this.group.add(this.layoutGroup, this.statics.group, this.keeps.group, this.motes.mesh);
+    for (let i = 0; i < MAX_PLAYERS; i++) {
+      // Firelight spilling from each citadel gate.
+      const l = new PointLight('#ff8a3a', 0, 22, 1.6);
+      this.lights.push(l);
+      this.group.add(l);
+    }
+    const rand = mulberry(77);
+    this.flakes = Array.from({ length: 420 }, () => ({ x: rand(), y: rand(), z: rand(), s: rand() }));
+    this.group.add(this.layoutGroup, this.statics.group, this.brushGroup, this.keeps.group, this.sleet.mesh);
     this.layout();
   }
 
@@ -137,235 +244,298 @@ export class Board {
     this.layout();
   }
 
-  /** (Re)builds ground, roads and scenery for the current lane count. */
+  /** (Re)builds terrain and scenery for the current lane count. */
   layout() {
     const count = laneCount();
     if (count === this.lanes) return;
     this.lanes = count;
+    this.laneFirst.value = laneOriginX(0);
     for (const c of [...this.layoutGroup.children]) (c as Mesh).geometry.dispose();
     this.layoutGroup.clear();
-    const w = worldMaxX() - worldMinX() + 260;
-    const cx = (worldMinX() + worldMaxX()) / 2;
-    const ground = new Mesh(new PlaneGeometry(w, LANE_H + 200).rotateX(-Math.PI / 2), this.groundMat);
-    ground.position.set(cx, -0.02, 0);
-    ground.receiveShadow = true;
-    const river = new Mesh(new PlaneGeometry(w, RIVER_Z1 - RIVER_Z0).rotateX(-Math.PI / 2), this.waterMat);
-    river.position.set(cx, 0.01, (RIVER_Z0 + RIVER_Z1) / 2);
-    river.receiveShadow = true;
-    this.layoutGroup.add(ground, river);
-    const bedH = LANE_H - GATE_ROWS - KEEP_ROWS;
+    const add = (g: BufferGeometry, mat = MATS.terrain!, shadow = true) => {
+      const m = new Mesh(g, mat);
+      m.receiveShadow = true;
+      m.castShadow = shadow;
+      this.layoutGroup.add(m);
+      return m;
+    };
+    const x0 = worldMinX() - 110;
+    const x1 = worldMaxX() + 110;
+
+    // The plain the raiders cross, running under everything.
+    const plain = new PlaneGeometry(x1 - x0, 260).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, -0.04, Z_MOUTH - 60);
+    add(plain, MATS.terrain, false);
+
+    // Canyon floors, running back into each gate's recess.
     for (let lane = 0; lane < count; lane++) {
-      const ox = laneOriginX(lane);
-      const bed = new Mesh(new PlaneGeometry(LANE_W, bedH).rotateX(-Math.PI / 2), this.roadMat);
-      bed.position.set(ox + LANE_W / 2, 0.005, toWorldZ(GATE_ROWS + bedH / 2));
-      bed.receiveShadow = true;
-      const gate = new Mesh(new PlaneGeometry(LANE_W, GATE_ROWS).rotateX(-Math.PI / 2), this.cobbleMat);
-      gate.position.set(ox + LANE_W / 2, 0.006, toWorldZ(GATE_ROWS / 2));
-      gate.receiveShadow = true;
-      const keep = new Mesh(new PlaneGeometry(LANE_W, KEEP_ROWS + 5).rotateX(-Math.PI / 2), this.cobbleMat);
-      keep.position.set(ox + LANE_W / 2, 0.006, toWorldZ(LANE_H - KEEP_ROWS + (KEEP_ROWS + 5) / 2));
-      keep.receiveShadow = true;
-      const bridge = new Mesh(new PlaneGeometry(2.4, RIVER_Z1 - RIVER_Z0 + 1).rotateX(-Math.PI / 2), this.cobbleMat);
-      bridge.position.set(ox + LANE_W / 2, 0.08, (RIVER_Z0 + RIVER_Z1) / 2);
-      bridge.receiveShadow = true;
-      this.layoutGroup.add(bed, gate, keep, bridge);
+      const len = Z_MOUTH + 2 - (ZC - RECESS - 0.5);
+      add(new PlaneGeometry(LANE_W, len).rotateX(-Math.PI / 2).translate(laneCx(lane), 0.004, Z_MOUTH + 2 - len / 2), this.roadMat, false);
     }
+
+    // Plateaus between the canyons, and the flanks beyond the outermost ones.
+    const zs = range(ZC - 3, Z_MOUTH + 7, 0.4);
+    for (let lane = 0; lane < count - 1; lane++) {
+      const xa = laneOriginX(lane) + LANE_W;
+      add(heightGrid(edgeDense(xa, xa + (STRIDE - LANE_W)), zs, heightAt));
+    }
+    const first = laneOriginX(0);
+    const last = laneOriginX(count - 1) + LANE_W;
+    const flankZ = range(ZC - 3, Z_MOUTH + 40, 0.6);
+    const flank = (a: number, b: number, nearEdge: 'a' | 'b') => {
+      const xs: number[] = [];
+      // Dense at the canyon wall, coarse toward the hills.
+      const edgeX = nearEdge === 'a' ? a : b;
+      let v = nearEdge === 'a' ? a : b;
+      const sign = nearEdge === 'a' ? 1 : -1;
+      while ((sign > 0 ? v < b : v > a)) {
+        xs.push(v);
+        const d = Math.abs(v - edgeX);
+        v += sign * (d < 2 ? 0.12 : d < 12 ? 0.45 : 1.4);
+      }
+      xs.push(sign > 0 ? b : a);
+      xs.sort((p, q) => p - q);
+      add(heightGrid(xs, flankZ, heightAt));
+    };
+    flank(x0, first, 'b');
+    flank(last, x1, 'a');
+
+    // The range: its face, then the high ground and peaks behind.
+    const fx: number[] = [];
+    for (let x = x0; x < x1; x += x > worldMinX() - 8 && x < worldMaxX() + 8 ? 0.4 : 1.0) fx.push(x);
+    fx.push(x1);
+    add(faceGrid(fx, range(-0.6, CLIFF_H, 0.35), cliffZ), MATS.rock);
+    const topZ0 = ZC - CLIFF_H * LEAN - 0.6;
+    const topXs = range(x0, x1, 1.4);
+    const topZs = range(topZ0 - 150, topZ0 + 0.8, 1.5);
+    add(
+      heightGrid(topXs, topZs, (x, z) => {
+        const back = Math.max(0, topZ0 - z);
+        const ridge = 1 - Math.abs(fbm(nCliff, x * 0.03, z * 0.03, 3));
+        return CLIFF_H - 0.4 + back * 0.28 * ridge + fbm(nCliff2, x * 0.07, z * 0.07, 3) * 3 * smooth(0, 10, back);
+      }),
+      MATS.rock,
+    );
+
     this.buildStatics();
+  }
+
+  private brushChunk(x: number, z: number): BatchSet {
+    const key = `${Math.floor(x / 20)},${Math.floor(z / 20)}`;
+    let set = this.brushChunks.get(key);
+    if (!set) {
+      set = new BatchSet();
+      set.begin();
+      this.brushChunks.set(key, set);
+      this.brushGroup.add(set.group);
+    }
+    return set;
+  }
+
+  /** Brush is detail: it's hidden when zoomed far out. */
+  setDetail(detailed: boolean) {
+    this.brushGroup.visible = detailed;
   }
 
   private buildStatics() {
     const S = this.statics;
     S.begin();
-    const kk = assetsReady();
-    const white = new Color('#ffffff');
+    for (const set of this.brushChunks.values()) this.brushGroup.remove(set.group);
+    this.brushChunks.clear();
     const rand = mulberry(7);
-    const pick = (list: string[]) => new Color(list[Math.floor(rand() * list.length)]).multiplyScalar(0.85 + rand() * 0.3);
-    const stoneVar = () => new Color(PALETTE.stone).multiplyScalar(0.85 + rand() * 0.25);
-    /** Places a loaded model scaled to a footprint `width` (or a `height` if negative). */
-    const model = (name: string, x: number, z: number, rot: number, size: number, mat: MatKey = 'atlas', tint: Color | string = white) => {
-      const key = `kk:${name}` as GeoKey;
-      const s = size < 0 ? fitHeight(key, -size) : fitWidth(key, size);
-      S.get(key, mat).push(x, 0, z, rot, s, s, s, tint);
+    const c = new Color();
+    const tint = (hex: string, v = 0.25) => c.set(hex).multiplyScalar(1 - v / 2 + rand() * v);
+    const BRUSH_TONES: Record<(typeof BRUSH_KINDS)[number], string[]> = {
+      'pg:grass': ['#8a7f68', '#786e5a', '#958a70'],
+      'pg:grass2': ['#9a8e74', '#80765f'],
+      'pg:heather': ['#4e3a48', '#3f3240', '#5a4250', '#463438'],
+      'pg:bracken': ['#6a4a30', '#5a3e28', '#74503a'],
     };
-    const tree = (x: number, z: number, scale: number) => {
-      const r = rand();
-      if (kk && r < 0.3) model(rand() < 0.5 ? 'tree_single_A' : 'tree_single_B', x, z, rand() * 6, 1.2 * scale, 'atlasFoliage', new Color('#b8c8b0').multiplyScalar(0.75 + rand() * 0.2));
-      else if (r < 0.82) pushModel(S, SCOTS_PINE, x, 0, z, rand() * 6, scale * (0.9 + rand() * 0.5), pick(PINE_GREENS));
-      else if (r < 0.95) pushModel(S, BIRCH, x, 0, z, rand() * 6, scale * 0.8, pick(BIRCH_LEAVES));
-      else pushModel(S, DEAD_TREE, x, 0, z, rand() * 6, scale, white);
+    const slope = (x: number, z: number) => Math.hypot(heightAt(x + 0.3, z) - heightAt(x - 0.3, z), heightAt(x, z + 0.3) - heightAt(x, z - 0.3)) / 0.6;
+    const onFloor = (x: number, z: number) => {
+      const first = laneOriginX(0);
+      const lane = Math.floor((x - first) / STRIDE);
+      const local = x - laneOriginX(lane);
+      return lane >= 0 && lane < this.lanes && local > -0.05 && local < LANE_W + 0.05 && z < Z_MOUTH + 0.5 && z > ZC - RECESS - 1;
     };
-    const heather = (x: number, z: number, n: number, spread: number) => {
-      for (let i = 0; i < n; i++) pushModel(S, HEATHER, x + (rand() - 0.5) * spread, 0, z + (rand() - 0.5) * spread, rand() * 6, 0.6 + rand() * 0.7, pick(HEATHERS));
+    const brush = (x: number, z: number, scale = 1) => {
+      if (onFloor(x, z) || slope(x, z) > 1.1) return;
+      const kind = BRUSH_KINDS[Math.floor(rand() * BRUSH_KINDS.length)];
+      const tones = BRUSH_TONES[kind];
+      const s = (1.1 + rand() * 0.9) * scale;
+      this.brushChunk(x, z).get(kind as GeoKey, 'brush', false).push(x, heightAt(x, z) - 0.03, z, rand() * 6.28, s, s * (0.8 + rand() * 0.5), s, tint(tones[Math.floor(rand() * tones.length)]));
+    };
+    const tree = (x: number, z: number) => {
+      if (onFloor(x, z) || slope(x, z) > 0.8) return;
+      const s = 0.8 + rand() * 0.7;
+      S.get(DEAD_TREES[Math.floor(rand() * DEAD_TREES.length)] as GeoKey, 'matte').push(x, heightAt(x, z) - 0.05, z, (rand() - 0.5) * 0.5, s, s * (0.85 + rand() * 0.4), s, tint('#2b241f', 0.4));
     };
     const boulder = (x: number, z: number, size: number) => {
-      if (kk) model(['rock_single_A', 'rock_single_B', 'rock_single_C', 'rock_single_D', 'rock_single_E'][Math.floor(rand() * 5)], x, z, rand() * 6, size);
-      else S.get('rock').push(x, 0.05, z, rand() * 6, size, size * 0.6, size, new Color(PALETTE.stoneDark));
+      if (onFloor(x, z)) return;
+      S.get(BOULDERS[Math.floor(rand() * BOULDERS.length)] as GeoKey, 'rock').push(x, heightAt(x, z) - size * 0.15, z, rand() * 6.28, size, size * (0.6 + rand() * 0.6), size * (0.8 + rand() * 0.4), tint('#ffffff', 0.3));
     };
 
-    for (let lane = 0; lane < this.lanes; lane++) {
-      const ox = laneOriginX(lane);
-      const cx = ox + LANE_W / 2;
-      // Side walls: grey stone courses with merlons.
-      for (const wx of [ox - 0.25, ox + LANE_W + 0.25]) {
-        S.get('box').push(wx, 0, toWorldZ(LANE_H / 2 - 1.5), 0, 0.5, 0.45, LANE_H + 3, PALETTE.stoneDark);
-        for (let y = -1; y <= LANE_H + 1; y += 2) S.get('box').push(wx, 0.45, toWorldZ(y), 0, 0.56, 0.2, 0.42, stoneVar());
-      }
-      // Gatehouse: towers either side of a lintel.
-      const gz = toWorldZ(-0.9);
-      for (const gx of [ox - 0.3, ox + LANE_W + 0.3]) {
-        if (kk) model('tower_A', gx, gz, 0, 1.9);
-        else {
-          S.get('box').push(gx, 0, gz, 0, 1.5, 2.4, 1.5, stoneVar());
-          S.get('cone4').push(gx, 2.65, gz, 0, 2.0, 1.1, 2.0, PALETTE.roofRed);
-        }
-      }
-      S.get('box').push(cx, 2.0, gz, 0, LANE_W + 0.6, 0.5, 0.8, PALETTE.stoneDark);
-      S.get('box').push(cx, 1.85, gz, 0, LANE_W - 1, 0.15, 0.12, PALETTE.iron);
-      // A croft village around the keep, with stores and clutter.
-      const kz = toWorldZ(LANE_H + 3.2);
-      if (kk) {
-        const spots: [string, number, number, number, number][] = [
-          ['home_A', -5.0, 0.6, 0.4, 1.7],
-          ['home_B', 5.0, 1.2, -0.5, 1.8],
-          [['tavern', 'church', 'blacksmith', 'windmill', 'watermill', 'market'][lane % 6], -4.2, 3.6, 1.2, 2.2],
-          ['well', 3.6, 3.8, 0, 0.9],
-        ];
-        for (const [name, dx, dz, rot, size] of spots) model(name, cx + dx, kz + dz, rot, size);
-        for (let i = 0; i < 6; i++) {
-          const prop = ['barrel', 'crate_A_big', 'sack', 'resource_lumber', 'resource_stone', 'wheelbarrow'][i];
-          model(prop, cx + (rand() < 0.5 ? -1 : 1) * (2.8 + rand() * 1.5), kz - 1.4 + rand() * 1.2, rand() * 6, 0.35 + rand() * 0.3);
-        }
-      }
-      // The glen between this lane and the next: pines, birches, heather, bracken and boulders.
-      const gx0 = ox + LANE_W + 0.9;
-      const gw = LANE_GAP - 1.8;
-      for (let i = 0; i < 13; i++) tree(gx0 + rand() * gw, toWorldZ(-3 + rand() * (LANE_H + 10)), 0.75 + rand() * 0.6);
-      for (let i = 0; i < 14; i++) heather(gx0 + rand() * gw, toWorldZ(rand() * (LANE_H + 6)), 4 + Math.floor(rand() * 4), 1.3);
-      for (let i = 0; i < 24; i++) pushModel(S, TUFT, gx0 - 0.4 + rand() * (gw + 0.8), 0, toWorldZ(rand() * (LANE_H + 6)), rand() * 6, 0.8 + rand() * 0.6, pick(BRACKEN));
-      for (let i = 0; i < 6; i++) boulder(gx0 + rand() * gw, toWorldZ(rand() * (LANE_H + 8)), 0.6 + rand() * 1.0);
+    const first = laneOriginX(0);
+    const last = laneOriginX(this.lanes - 1) + LANE_W;
+    // The plateaus between canyons: thick dead heath, scattered stones, the odd dead tree.
+    for (let lane = 0; lane < this.lanes - 1; lane++) {
+      const xa = laneOriginX(lane) + LANE_W;
+      const gw = STRIDE - LANE_W;
+      for (let i = 0; i < 460; i++) brush(xa + rand() * gw, ZC + rand() * (Z_MOUTH + 4 - ZC));
+      for (let i = 0; i < 10; i++) boulder(xa + 0.6 + rand() * (gw - 1.2), ZC + rand() * (Z_MOUTH + 4 - ZC), 0.4 + rand() * 0.9);
+      for (let i = 0; i < 2; i++) tree(xa + 1.5 + rand() * (gw - 3), Z_END + 4 + rand() * (Z_MOUTH - Z_END - 6));
     }
+    // Flanks.
+    for (const side of [-1, 1]) {
+      const edge = side < 0 ? first : last;
+      for (let i = 0; i < 1400; i++) {
+        const d = Math.pow(rand(), 1.6) * 45;
+        brush(edge + side * (0.4 + d), ZC + rand() * (Z_MOUTH + 14 - ZC), 1 + d * 0.02);
+      }
+      for (let i = 0; i < 40; i++) boulder(edge + side * (1 + rand() * 50), ZC + rand() * (Z_MOUTH + 20 - ZC), 0.6 + rand() * 2.2);
+      for (let i = 0; i < 16; i++) tree(edge + side * (2 + rand() * 40), ZC + 2 + rand() * (Z_MOUTH + 12 - ZC));
+    }
+    // The approach: a broad, bleak plain of brush and boulders, darkening into the distance.
+    for (let i = 0; i < 3200; i++) {
+      const x = first - 30 + rand() * (last - first + 60);
+      const z = Z_MOUTH - 1 + Math.pow(rand(), 1.4) * 34;
+      brush(x, z);
+    }
+    for (let i = 0; i < 90; i++) boulder(first - 30 + rand() * (last - first + 60), Z_MOUTH + 1 + rand() * 34, 0.4 + rand() * 1.6);
+    for (let i = 0; i < 26; i++) tree(first - 30 + rand() * (last - first + 60), Z_MOUTH + 2 + rand() * 30);
 
-    const x0 = worldMinX() - 80;
-    const span = worldMaxX() - worldMinX() + 160;
-    // Open moor beyond the gates and across the river: heather drifts, bracken and boulders.
-    for (let i = 0; i < 420; i++) {
-      const x = x0 + rand() * span;
-      const z = rand() < 0.6 ? toWorldZ(-4 - rand() * 22) : RIVER_Z1 + 1 + rand() * 16;
-      const r = rand();
-      if (r < 0.62) heather(x, z, 3 + Math.floor(rand() * 5), 1.6);
-      else if (r < 0.85) pushModel(S, TUFT, x, 0, z, rand() * 6, 1 + rand() * 0.6, pick(BRACKEN));
-      else boulder(x, z, 0.8 + rand() * 1.8);
-    }
-    // Pinewoods: scattered stands on the moor and dense woods further out.
-    for (let i = 0; i < 520; i++) {
-      const x = x0 + rand() * span;
-      const far = rand() < 0.55;
-      const z = far ? toWorldZ(-14 - rand() * 34) : RIVER_Z1 + 4 + rand() * 28;
-      tree(x, z, 1.0 + rand() * 1.3);
-    }
-    for (let i = 0; i < 120; i++) {
-      const x = rand() < 0.5 ? worldMinX() - 2 - rand() * 50 : worldMaxX() + 2 + rand() * 50;
-      tree(x, toWorldZ(-5 + rand() * (LANE_H + 12)), 1.0 + rand() * 1.2);
-    }
-    // Snow-capped mountains ringing the glen.
-    if (kk) {
-      const peaks = ['mountain_A', 'mountain_B', 'mountain_C'];
-      for (let x = x0 - 20; x < x0 + span + 20; x += 14 + rand() * 10) {
-        model(peaks[Math.floor(rand() * 3)], x, toWorldZ(-62 - rand() * 26), rand() * 6, 22 + rand() * 18, 'peak');
-        if (rand() < 0.5) model(peaks[Math.floor(rand() * 3)], x + 7, RIVER_Z1 + 46 + rand() * 18, rand() * 6, 18 + rand() * 12, 'peak');
-      }
+    // The citadels: dressed stone set into the face of the range.
+    for (let lane = 0; lane < this.lanes; lane++) {
+      const cx = laneCx(lane);
+      const pz = Z_END - 1.1;
+      const st = (x: number, y: number, z: number, w: number, h: number, d: number, rotX = 0, shade = 1) =>
+        S.get('box', 'cutStone').push(x, y, z, 0, w, h, d, c.setScalar(shade), rotX);
       for (const side of [-1, 1]) {
-        for (let z = -40; z < 50; z += 12 + rand() * 8) {
-          const x = side < 0 ? worldMinX() - 60 - rand() * 25 : worldMaxX() + 60 + rand() * 25;
-          model(peaks[Math.floor(rand() * 3)], x, z, rand() * 6, 18 + rand() * 12, 'peak');
-        }
+        const px = cx + side * (AW / 2 - 0.85);
+        st(px, 0, pz, 2.0, 0.8, 2.0);
+        st(px, 0.8, pz, 1.5, AH - 1.7, 1.5);
+        st(px, AH - 0.9, pz, 2.0, 0.55, 2.0);
+        // Inner jambs step the doorway in for depth.
+        st(cx + side * (AW / 2 - 2.05), 0, Z_END - 2.4, 0.7, AH - 1.4, 1.2, 0, 0.85);
+        // Buttresses climbing the façade.
+        const by = AH + 1.4;
+        const bh = 19.5 - by;
+        st(cx + side * (AW / 2 - 0.4), by, ZC - (by + bh / 2) * LEAN - 0.2, 1.0, bh, 1.6, -LEAN, 0.92);
       }
+      st(cx, AH - 0.35, pz, AW + 1.4, 1.4, 2.1);
+      st(cx, AH + 1.05, pz - 0.25, AW - 0.8, 0.9, 1.7, 0, 0.95);
+      st(cx, AH + 1.95, pz - 0.5, AW - 3, 0.8, 1.4, 0, 0.9);
+      st(cx, AH - 2.2, Z_END - 2.4, AW - 3.2, 0.8, 1.2, 0, 0.85);
+      // Steps up to the threshold.
+      for (let i = 0; i < 3; i++) st(cx, 0, Z_END - 0.9 - i * 0.65, AW - 3.6, 0.15 * (i + 1), 0.7, 0, 0.9);
+      // Rubble and boulders where the canyon walls meet the range.
+      for (let i = 0; i < 4; i++) boulder(cx + (rand() < 0.5 ? -1 : 1) * (LANE_W / 2 + 1 + rand() * 2), Z_END - 0.5 - rand() * 1.5, 0.6 + rand() * 0.8);
     }
     S.end();
-    // Ambient motes scattered over the realm.
-    this.mote = Array.from({ length: 220 }, () => ({ x: x0 + 80 + rand() * (span - 160), y: 0.3 + rand() * 2.2, z: toWorldZ(-4 + rand() * (LANE_H + 14)), p: rand() * 100 }));
+    for (const set of this.brushChunks.values()) {
+      set.end();
+      for (const m of set.group.children as InstancedMesh[]) {
+        m.frustumCulled = true;
+        m.computeBoundingSphere();
+      }
+    }
+
+    // Lit slits in the façades: the city within.
+    this.windows = [];
+    for (let lane = 0; lane < this.lanes; lane++) {
+      const cx = laneCx(lane);
+      for (let i = 0; i < 9; i++) {
+        const y = AH + 3 + rand() * 9;
+        const x = cx + (rand() - 0.5) * (AW - 2.8);
+        this.windows.push({ lane, x, y, z: ZC - y * LEAN - 0.32, h: 0.4 + rand() * 0.5 });
+      }
+    }
   }
 
-  /** Keeps, banners and motes are drawn per frame: house colours, falls, flicker and wind. */
-  update(houses: string[], fallen: boolean[], time: number, glow: number) {
+  /** Gates, fires, banners and weather are drawn per frame: house colours, falls, flicker and wind. */
+  update(houses: string[], fallen: boolean[], time: number, glow: number, focus: Vector3) {
     const key = houses.join();
     if (key !== this.housesKey) {
       this.housesKey = key;
-      this.houses = houses.map((h) => new Color(h));
+      // Heraldry, weathered: muted and darkened, so firelight stays the brightest thing in view.
+      this.houses = houses.map((h) => new Color(h).lerp(new Color('#4a4a4a'), 0.35).multiplyScalar(0.75));
     }
-    this.fallen = fallen;
-    const kk = assetsReady();
+    fireLevel.value = glow;
     const K = this.keeps;
     K.begin();
-    const burnt = new Color('#2a2624');
-    const white = new Color('#ffffff');
-    for (let lane = 0; lane < houses.length; lane++) {
+    const c = new Color();
+    const fire = new Color(PALETTE.fire);
+    const flame = (x: number, y: number, z: number, size: number, seed: number, pool = 3) => {
+      const f = 0.85 + Math.sin(time * 13 + seed) * 0.08 + Math.sin(time * 23.7 + seed * 2.1) * 0.07;
+      K.get('cone', 'ember', false).push(x, y, z, seed, size * 0.7 * f, size * 1.5 * f, size * 0.7 * f, c.setScalar(f));
+      K.get('sphere', 'ember', false).push(x, y + size * 0.25, z, 0, size * 0.9, size * 0.6 * f, size * 0.9, c.setScalar(0.6 * f));
+      if (pool > 0) K.get('pg:card', 'pool', false).push(x, 0.03, z, 0, pool * 2, 1, pool * 2, c.copy(fire).multiplyScalar(f));
+      // Embers rise and fade.
+      for (let i = 0; i < 3; i++) {
+        const t = (time * 0.45 + seed * 0.37 + i / 3) % 1;
+        const e = 0.035 * (1 - t);
+        K.get('sphere', 'ember', false).push(x + Math.sin(t * 9 + seed + i) * 0.3 * t + t * 0.4, y + 0.3 + t * 2.4, z + Math.cos(t * 7 + i) * 0.2 * t, 0, e, e, e, c.setScalar(1 - t));
+      }
+    };
+    const brazier = (x: number, z: number, lit: boolean, seed: number) => {
+      K.get('box', 'cutStone').push(x, 0, z, 0, 0.55, 0.9, 0.55, c.setScalar(0.85));
+      K.get('cyl', 'metal').push(x, 0.9, z, 0, 0.7, 0.28, 0.7, c.set(PALETTE.iron));
+      if (lit) flame(x, 1.2, z, 0.32, seed);
+    };
+
+    for (let lane = 0; lane < this.lanes; lane++) {
+      const cx = laneCx(lane);
+      const down = !!fallen[lane];
       const ox = laneOriginX(lane);
-      const cx = ox + LANE_W / 2;
-      const kz = toWorldZ(LANE_H + 3.2);
-      const down = this.fallen[lane];
-      const house = down ? burnt : this.houses[lane];
-      const keepTop = kk ? 8.5 : 2.8;
-      if (kk) {
-        // The castle, or its ruin.
-        const name = down ? 'kk:destroyed' : 'kk:castle';
-        const s = down ? fitWidth(name, 5.5) : fitWidth(name, 5.2);
-        K.get(name as GeoKey, 'atlas').push(cx, 0, kz + 0.4, Math.PI, s, s, s, down ? new Color('#6a6560') : white);
+      // The doorway: firelight from the deep, or a black hole choked with rubble once it falls.
+      K.get('pg:door', 'portal', false).push(cx, 0.45, Z_END - 2.95, 0, AW - 3.5, AH - 2.7, 1, c.setScalar(down ? 0.03 : 1));
+      if (down) {
+        const r = mulberry(lane + 1);
+        for (let i = 0; i < 9; i++) {
+          const s = 0.5 + r() * 1.1;
+          K.get('box', 'cutStone').push(cx + (r() - 0.5) * (AW - 3), s * 0.3, Z_END - 1.4 - r() * 1.6, r() * 3, s, s * 0.7, s * 0.9, c.setScalar(0.6), r() - 0.5, r() - 0.5);
+        }
       } else {
-        const stone = down ? '#3a3734' : PALETTE.stone;
-        const h = down ? 0.9 : 2.8;
-        K.get('box').push(cx, 0, kz, 0, 4.2, h, 2.8, stone);
-        for (const dx of [-2.6, 2.6]) {
-          const th = down ? 1.2 : 3.6;
-          K.get('cyl').push(cx + dx, 0, kz - 0.4, 0, 1.4, th, 1.4, stone);
-          if (!down) K.get('cone').push(cx + dx, th, kz - 0.4, 0, 1.7, 1.5, 1.7, house);
+        // Long house banners hang down the pillar faces.
+        for (const side of [-1, 1]) {
+          const px = cx + side * (AW / 2 - 0.85);
+          K.get('box', 'cloth', false).push(px, AH - 0.9 - 2.75, Z_END - 0.33, 0, 5.4, 1.05, 0.04, this.houses[lane], 0, -Math.PI / 2);
         }
       }
-      if (!down) {
-        // The house standard over the keep, and torches at the door.
-        const sx = cx + (kk ? 1.6 : 0);
-        K.get('cyl').push(sx, keepTop - 2.2, kz, 0, 0.08, 2.6, 0.08, PALETTE.wood);
-        K.get('box', 'cloth', false).push(sx + 0.6, keepTop - 0.25, kz, 0, 1.2, 0.85, 0.04, house);
-        for (const tx of [-1.1, 1.1]) {
-          const flick = 0.9 + Math.sin(time * 13 + lane * 3 + tx) * 0.1;
-          K.get('sphere', 'glow', false).push(cx + tx, 1.35, kz - 1.9, 0, 0.18 * flick, 0.26 * flick, 0.18 * flick, PALETTE.fire);
-        }
-        // Pennants along both walls in the house colours.
-        for (let y = 4; y < LANE_H - 2; y += 7) {
-          for (const [wx, side] of [[ox - 0.25, -1], [ox + LANE_W + 0.25, 1]] as const) {
-            const z = toWorldZ(y + (side > 0 ? 3.5 : 0));
-            K.get('cyl').push(wx, 0.5, z, 0, 0.05, 1.5, 0.05, PALETTE.woodDark);
-            K.get('box', 'cloth', false).push(wx + side * 0.3, 1.55, z, side > 0 ? 0 : Math.PI, 0.6, 0.32, 0.03, house);
-          }
-        }
-        // Gate flags.
-        for (const gx of [ox - 0.3, ox + LANE_W + 0.3]) {
-          const top = kk ? 4.0 : 3.6;
-          K.get('cyl').push(gx, top, toWorldZ(-0.9), 0, 0.05, 1.0, 0.05, PALETTE.woodDark);
-          K.get('box', 'cloth', false).push(gx + 0.3, top + 0.65, toWorldZ(-0.9), 0, 0.6, 0.34, 0.03, house);
-        }
-      }
-      // Gate torches.
-      for (const gx of [ox - 0.3, ox + LANE_W + 0.3]) {
-        const flick = 0.9 + Math.sin(time * 11 + lane + gx) * 0.1;
-        K.get('sphere', 'glow', false).push(gx + (gx < cx ? 0.8 : -0.8), 1.6, toWorldZ(-0.1), 0, 0.18 * flick, 0.27 * flick, 0.18 * flick, down ? '#402018' : PALETTE.fire);
-      }
+      // Braziers at the threshold and at the canyon mouth.
+      brazier(ox + 1.3, toWorldZ(LANE_H - 0.6), !down, lane * 7 + 1);
+      brazier(ox + LANE_W - 1.3, toWorldZ(LANE_H - 0.6), !down, lane * 7 + 2);
+      brazier(ox + 0.5, toWorldZ(0.6), !down, lane * 7 + 3);
+      brazier(ox + LANE_W - 0.5, toWorldZ(0.6), !down, lane * 7 + 4);
+      // The light from the gate.
+      const L = this.lights[lane];
+      L.position.set(cx, 2.4, Z_END - 1.2);
+      L.intensity = down ? 0 : (34 + Math.sin(time * 9 + lane) * 4 + Math.sin(time * 21 + lane * 3) * 3) * glow;
+      if (!down) K.get('pg:card', 'pool', false).push(cx, 0.02, Z_END + 1.5, 0, AW, 1, 7, c.copy(fire).multiplyScalar(0.8));
+    }
+    for (let i = this.lanes; i < this.lights.length; i++) this.lights[i].intensity = 0;
+    for (const w of this.windows) {
+      if (fallen[w.lane]) continue;
+      const f = 0.6 + 0.4 * Math.max(0, Math.sin(time * 0.7 + w.x * 3.1 + w.y));
+      K.get('box', 'ember', false).push(w.x, w.y, w.z, 0, 0.18, w.h, 0.06, c.setScalar(f * 0.55));
     }
     K.end();
 
-    // Motes: drifting snowflakes by day, fireflies-like embers at night.
-    const night = Math.min(1, Math.max(0, (glow - 0.6) / 1.1));
-    const m = this.motes;
-    m.begin();
-    const col = new Color().lerpColors(new Color('#e8eef8'), new Color('#ffcf7a'), night);
-    for (const d of this.mote) {
-      const t = time * 0.4 + d.p;
-      const blink = night > 0 ? Math.max(0, Math.sin(t * 2.3 + d.p * 7)) : 0.6;
-      const size = (0.03 + night * 0.035) * (0.4 + blink);
-      // Snow falls gently and wraps; embers wander.
-      const fall = night > 0.5 ? 0 : ((time * 0.35 + d.p) % 3);
-      m.push(d.x + Math.sin(t) * 1.2, d.y + 1.2 - fall + Math.sin(t * 1.7) * 0.3, d.z + Math.cos(t * 0.8) * 1.2, 0, size, size, size, col);
+    // Sleet, blown on a cold wind, in a box that follows the view.
+    const S = this.sleet;
+    S.begin();
+    const span = 90;
+    const depth = 70;
+    const top = 16;
+    const vy = 9;
+    const vx = 3.2;
+    const tilt = Math.atan2(vx, vy);
+    for (const f of this.flakes) {
+      const t = (time * vy) / top + f.s * 13.7;
+      const fy = (1 - (t - Math.floor(t))) * top;
+      const wx = ((f.x * span + (time * vx + f.s * 40) - focus.x) % span + span) % span - span / 2 + focus.x;
+      const wz = focus.z - depth / 2 + f.z * depth;
+      S.push(wx, fy, wz, 0, 0.02, 0.32, 0.02, c.setScalar(1), 0, -tilt);
     }
-    m.end();
+    S.end();
   }
 }

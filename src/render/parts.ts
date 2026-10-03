@@ -25,12 +25,34 @@ export const GEO = {
   rock: new IcosahedronGeometry(0.5, 0),
 } satisfies Record<string, BufferGeometry>;
 
-/** Built-in primitives, plus models loaded at runtime: `kk:<model>` (KayKit statics) and `kc:<char>:<frame>` (baked character frames). */
-export type GeoKey = keyof typeof GEO | `kk:${string}` | `kc:${string}`;
-export type MatKey = 'matte' | 'metal' | 'glow' | 'foliage' | 'cloth' | 'atlas' | 'atlasFoliage' | 'peak' | `char:${string}`;
+/**
+ * Built-in primitives, plus geometry registered at runtime: `kk:<model>` (KayKit statics),
+ * `kc:<char>:<frame>` (baked character frames) and `pg:<name>` (procedural scenery).
+ */
+export type GeoKey = keyof typeof GEO | `kk:${string}` | `kc:${string}` | `pg:${string}`;
+export type MatKey =
+  | 'matte'
+  | 'metal'
+  | 'glow'
+  | 'foliage'
+  | 'cloth'
+  | 'atlas'
+  | 'atlasFoliage'
+  | 'peak'
+  | 'rock'
+  | 'terrain'
+  | 'cutStone'
+  | 'portal'
+  | 'pool'
+  | 'ember'
+  | 'brush'
+  | `char:${string}`;
+
+/** Unlit light-ish materials never cast shadows. */
+const UNSHADOWED = new Set<MatKey>(['glow', 'portal', 'pool', 'ember']);
 
 const EXTRA_GEO = new Map<string, BufferGeometry>();
-/** Registers a loaded geometry under a `kk:`/`kc:` key. */
+/** Registers a loaded or generated geometry under a `kk:`/`kc:`/`pg:` key. */
 export function registerGeometry(key: string, g: BufferGeometry) {
   EXTRA_GEO.set(key, g);
 }
@@ -76,24 +98,25 @@ export function setGlow(level: number) {
   (MATS.glow as MeshBasicMaterial).color.setScalar(1.2 + level * 1.6);
 }
 
+/** A bleak, weathered palette: cold stone, black timber, tarnished metal. */
 export const PALETTE = {
-  stone: '#9a978f',
-  stoneDark: '#646260',
-  wood: '#7a5434',
-  woodDark: '#4a3424',
-  iron: '#4a4d52',
-  steel: '#9aa0a6',
-  fire: '#ff7a2a',
-  gold: '#c9a227',
-  skin: '#c89a78',
-  cloth: '#5a4a3a',
-  horse: '#5b3d28',
-  black: '#1c1b1d',
-  bandit: '#2f2b28',
-  thatch: '#c9a25a',
+  stone: '#5c5a56',
+  stoneDark: '#363532',
+  wood: '#4a3a2b',
+  woodDark: '#29211a',
+  iron: '#2d2f33',
+  steel: '#6c7176',
+  fire: '#ff8c32',
+  gold: '#8a7442',
+  skin: '#8a7062',
+  cloth: '#2e2822',
+  horse: '#3a2a20',
+  black: '#141416',
+  bandit: '#1e1c1b',
+  thatch: '#6a5a3a',
   white: '#ffffff',
-  birch: '#d8d2c6',
-  roofRed: '#a8432e',
+  birch: '#8a867e',
+  roofRed: '#3b3534',
 };
 
 export type Tint = keyof typeof PALETTE | 'house';
@@ -124,7 +147,7 @@ export class BatchSet {
     const key = `${g}:${m}`;
     let b = this.batches.get(key);
     if (!b) {
-      b = new Batch(geometryOf(g), this.override ?? MATS[m] ?? MATS.matte, 128, !this.override && shadows && m !== 'glow');
+      b = new Batch(geometryOf(g), this.override ?? MATS[m] ?? MATS.matte, 128, !this.override && shadows && !UNSHADOWED.has(m));
       this.batches.set(key, b);
       this.group.add(b.mesh);
     }

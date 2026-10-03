@@ -2,10 +2,12 @@
 /**
  * Headless screenshot of the running dev server, for checking visuals.
  *
- *   node scripts/screenshot.mjs <out.png> [--url URL] [--eval file.js] [--wait ms] [--after ms]
+ *   node scripts/screenshot.mjs <out.png> [--url URL] [--eval file.js] [--wait ms] [--after ms] [--stats]
  *
  * --eval runs a JS file in the page after load (e.g. to drive the game via a
  * window debug handle), then waits --after ms before capturing.
+ * --stats prints frame time, draw calls and triangles (a relative measure:
+ * software rendering is far slower than any real GPU).
  *
  * Notes: headless Chromium in cloud sandboxes often lacks usable WebGPU, so the
  * app should fall back to WebGL 2. SwiftShader renders at ~1 fps, so short-lived
@@ -49,6 +51,20 @@ if (evalFile) {
   await page.evaluate(readFileSync(evalFile, 'utf8'));
   await page.waitForTimeout(after);
 }
-await page.screenshot({ path: out });
+if (args.includes('--stats')) {
+  const st = await page.evaluate(async () => {
+    const r = window.ltw.view.renderer;
+    const t0 = performance.now();
+    let frames = 0;
+    await new Promise((done) => {
+      const f = () => (++frames >= 5 ? done() : requestAnimationFrame(f));
+      requestAnimationFrame(f);
+    });
+    const ms = (performance.now() - t0) / frames;
+    return { ms: Math.round(ms), calls: r.info.render.drawCalls, triangles: r.info.render.triangles };
+  });
+  console.log(`stats: ${st.ms} ms/frame (software), ${st.calls} draw calls, ${st.triangles} triangles`);
+}
+await page.screenshot({ path: out, timeout: 180_000 });
 console.log(`saved ${out}`);
 await browser.close();

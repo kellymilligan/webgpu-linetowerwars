@@ -73,29 +73,39 @@ Sends unlock over time (0:00 to 9:00 after the gates open).
 
 ## Presentation
 
-**Look (v0.4, The North):** a Highland glen, inspired by GoT's North and
-Scotland. It's cold, misty and weathered, with a low warm sun that makes the
-heather and snow glow.
-- **Day cycle:** an 8-minute cycle over the war: dawn, day, golden hour,
-  dusk, night.
-- **Moorland:** heather drifts, rusty bracken, peat and old snow (thicker to
-  the north) under drifting cloud shadow, plus a peat-dark river with
-  bridges.
-- **Models:** slate-roofed KayKit castles and crofts, snow-dusted rooftops,
-  Scots pines and autumn birches, granite boulders, and snow-capped
-  mountains ringing the glen.
-- **Characters:** creeps are KayKit characters on baked walk cycles, tinted
-  by house and standing on a house-coloured disc. Neutral raiders are
-  skeleton wights from the north.
-- **Heraldry:** house pennants, gate flags, keep standards and tower banners
-  in rippling cloth.
-- **Motes:** drifting snow by day, embers at night.
+**Look (v0.5, The Line):** dark, cold and bleak, in the spirit of
+Winterfell, the Blackwater and the battles of LOTR. It is abstract-realistic
+and procedural for now, with no stock scenery assets.
+- **The Line:** a sheer rock range runs across the top of the realm. Each
+  house's citadel is a great gate cut into its face, a way into a vast city
+  in the deep: dressed-stone pillars, long house banners, and lit slits up
+  the façade. A fallen house's gate goes dark and is choked with rubble.
+- **Canyons:** each lane is a channel sunk into a high, broken plateau,
+  walled by crags. The canyons are the only way in, which is why the
+  raiders must take the line. They open at the near end onto a bleak plain.
+- **Ground:** thick 3D brush (dead grass, heather, bracken) sways in the
+  wind on the plateaus and the plain, with boulders and the odd windswept
+  dead tree. Canyon floors are frozen mud.
+- **Light:** one bleak arc per war, with no bright day:
+  - cold overcast at the muster;
+  - dusk from 6:00;
+  - night from 14:00.
+- **Firelight** is the only warm colour:
+  - gate fires and braziers;
+  - a torch on every tower;
+  - torches carried by a third of the invaders.
+  A selective grade drains the dark, cold world but keeps fire warm. There's
+  also sleet, film grain and a heavy vignette.
+- **Invaders:** KayKit characters, drained and darkened to near-silhouettes,
+  standing on muted house-coloured discs.
+- **Towers:** grey-box, in dark weathered stone and timber.
+- **Camera:** about 12° off straight-on and 40° down, looking up the
+  canyons toward the range.
 
-- **Isometric 3D:** eight walled roads side by side on a foggy moor. Each has
-  a gate at its head and its house's keep at its foot.
-- **Colours:** creeps wear their sender's house colour; raiders wear black.
+- **Colours:** creeps wear a hint of their sender's house colour; raiders
+  are pale wights from the north.
 - **World-anchored UI:**
-  - a banner over each gate (name, lives, income, blocked state);
+  - a banner over each citadel (name, lives, income, blocked state);
   - popovers on tiles and towers.
 - **Side UI:** a slim roster, a send dock and a build bar.
 - **Build QoL:**

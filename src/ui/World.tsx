@@ -1,6 +1,7 @@
 import type { Controller } from '../app/controller';
 import {
   battleTime,
+  LANE_H,
   LANE_W,
   RAISE_KINDS,
   sellValue,
@@ -13,14 +14,14 @@ import type { GameState, Tower, TowerKind } from '../sim';
 import { GLYPH, HOTKEY, statLine } from './format';
 
 /**
- * UI that lives in the world: a banner over each lane's gate, and an action
+ * UI that lives in the world: a banner over each house's citadel gate, and an action
  * popover anchored to whatever the player has selected.
  */
 export function WorldLayer({ ctl, s }: { ctl: Controller; s: GameState }) {
   return (
     <>
       {s.players.map((p) => (
-        <div key={p.id} class="anchor" data-lane={p.id} data-wx={LANE_W / 2} data-wy={-1.2} data-wh={3.4} data-fade={p.id === ctl.me ? undefined : '1'}>
+        <div key={p.id} class="anchor" data-lane={p.id} data-wx={LANE_W / 2} data-wy={LANE_H + 1.5} data-wh={9.5} data-fade={p.id === ctl.me ? undefined : '1'}>
           <div class={`banner ${p.id === ctl.me ? 'me' : ''} ${p.alive ? '' : 'fallen'}`} onClick={() => ctl.focusLane(p.id)}>
             <i class="swatch" style={{ background: p.colour }} />
             <b>{p.id === ctl.me ? 'You' : p.name}</b>

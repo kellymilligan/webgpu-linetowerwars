@@ -3,18 +3,19 @@ import { LANE_H } from '../sim/data/map';
 import { worldMaxX, worldMinX } from './coords';
 
 /**
- * Isometric-style rig: a narrow-FOV perspective camera orbiting a ground
- * target. Rotation snaps in 90° steps so the board always reads cleanly.
+ * A narrow-FOV perspective camera orbiting a ground target, looking up the
+ * canyons toward the rock range from just off straight-on (about 12°), so the
+ * cliff faces read. Rotation snaps in 90° steps.
  */
 export class CameraRig {
   readonly camera = new PerspectiveCamera(28, 1, 1, 600);
   readonly target = new Vector3(0, 0, 0);
   private goalTarget = new Vector3(0, 0, 0);
-  yaw = Math.PI / 5;
-  private goalYaw = Math.PI / 5;
-  pitch = 0.95;
-  distance = 72;
-  private goalDistance = 72;
+  yaw = 0.21;
+  private goalYaw = 0.21;
+  pitch = 0.7;
+  distance = 84;
+  private goalDistance = 84;
   private keys = new Set<string>();
   /** Short screen shake, e.g. when your keep is breached. */
   private shake = 0;
@@ -94,7 +95,7 @@ export class CameraRig {
 
   private clampTarget() {
     this.goalTarget.x = clamp(this.goalTarget.x, worldMinX(), worldMaxX());
-    this.goalTarget.z = clamp(this.goalTarget.z, -LANE_H / 2 - 6, LANE_H / 2 + 6);
+    this.goalTarget.z = clamp(this.goalTarget.z, -LANE_H / 2 - 8, LANE_H / 2 + 6);
   }
 
   private apply() {

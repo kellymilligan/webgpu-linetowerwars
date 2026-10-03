@@ -145,7 +145,7 @@ export class Vfx {
           const now = performance.now();
           if (now - (this.lastPillar.get(e.lane) ?? 0) > 400) {
             this.lastPillar.set(e.lane, now);
-            this.pillar(laneCentreX(e.lane), toWorldZ(LANE_H + 1), '#ff3b2a');
+            this.pillar(laneCentreX(e.lane), toWorldZ(LANE_H - 0.5), '#c4261a');
           }
           break;
         }
@@ -184,12 +184,13 @@ export class Vfx {
   }
 
   private pillar(x: number, z: number, colour: string) {
-    const mat = glowMat(colour, 2, 0.6);
+    // A brief, low surge of red at the threshold: readable, without blowing out the gate.
+    const mat = glowMat(colour, 1.2, 0.35);
     const m = new Mesh(pillarGeo, mat);
     m.position.set(x, 0, z);
-    this.add(m, mat, 0.9, (e, t) => {
-      e.obj.scale.set(1.2 + t * 2, 6 * (1 - t * 0.5), 1.2 + t * 2);
-      e.mat.opacity = 0.6 * (1 - t);
+    this.add(m, mat, 0.6, (e, t) => {
+      e.obj.scale.set(1.0 + t * 2.4, 3.2 * (1 - t * 0.6), 1.0 + t * 2.4);
+      e.mat.opacity = 0.35 * (1 - t) * (1 - t);
     });
   }
 

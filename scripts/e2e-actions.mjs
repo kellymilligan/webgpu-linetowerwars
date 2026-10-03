@@ -39,8 +39,8 @@ export async function act(page, i, round) {
     await wait(150);
     await page.evaluate(() => {
       const { ctl, view } = window.ltw;
-      // Close in on row 12 of our lane (world z = row - 17), snap the camera, then order.
-      view.rig.focus(view.rig.goalTarget.x, 12.5 - 17, 26);
+      // Close in on row 12 of our lane (world z = 17 - row), snap the camera, then order.
+      view.rig.focus(view.rig.goalTarget.x, 17 - 12.5, 26);
       view.rig.snap();
       // Simulate a laggy uplink: hold our outgoing frames for 10 s (in order), so the
       // orders stay pending long enough for a software-rendered screenshot.

@@ -1,30 +1,28 @@
 import { Color, Matrix4, MeshBasicMaterial, PlaneGeometry, Quaternion, Vector3 } from 'three/webgpu';
 import { CREEPS } from '../sim/data/creeps';
 import type { CreepKind, GameState, TowerKind } from '../sim/types';
-import { assetBounds, assetsReady, CHAR_FRAMES, charTex, fitHeight, fitWidth } from './assets';
+import { assetsReady, CHAR_FRAMES, charTex, fitHeight } from './assets';
 import { Batch } from './batch';
 import { AIR_HEIGHT, toWorldX, toWorldZ } from './coords';
 import { LANE_W } from '../sim/data/map';
 import { AIMING, CREEP_MODELS, TOWER_MODELS } from './models';
 import { BatchSet, PALETTE, pushModel } from './parts';
-import type { GeoKey } from './parts';
+import type { GeoKey, Part } from './parts';
 
 const BANDIT = new Color(PALETTE.bandit);
-const WIGHT = new Color('#c4d6f0');
+const WIGHT = new Color('#7d889a');
+const FIRE = new Color(PALETTE.fire);
 
-/** Towers drawn with KayKit models per level (footprint width in tiles); others use primitives. */
-const TOWER_ASSETS: Partial<Record<TowerKind, { name: string; width: number }[]>> = {
-  archer: [
-    { name: 'tower_base', width: 0.82 },
-    { name: 'tower_A', width: 0.9 },
-    { name: 'tower_B', width: 1.0 },
-  ],
-  mangonel: [
-    { name: 'tower_catapult', width: 0.82 },
-    { name: 'tower_catapult', width: 0.92 },
-    { name: 'tower_catapult', width: 1.04 },
-  ],
-};
+/** Top of a grey-box model (its parts all stand on their base). */
+const topCache = new Map<readonly Part[], number>();
+function topOf(parts: readonly Part[]) {
+  let t = topCache.get(parts);
+  if (t === undefined) {
+    t = Math.max(...parts.map((p) => p.p[1] + (p.g === 'sphere' ? p.s[1] / 2 : p.s[1])));
+    topCache.set(parts, t);
+  }
+  return t;
+}
 
 /** Which baked KayKit character plays each creep, and how tall it stands (world units; a tile is 1). */
 interface CharPick {
@@ -91,9 +89,19 @@ export class Actors {
     this.ghostMat.opacity = 0.3 + Math.sin(time * 8) * 0.12;
   }
 
+  /** A small flickering flame at (x, y, z) with a pool of light on the ground beneath. */
+  private torch(set: BatchSet, x: number, y: number, z: number, size: number, seed: number, pool: number) {
+    const t = performance.now() / 1000;
+    const f = 0.82 + Math.sin(t * 14 + seed * 1.7) * 0.1 + Math.sin(t * 27.3 + seed) * 0.08;
+    set.get('cone', 'ember', false).push(x, y, z, seed, size * 0.8 * f, size * 1.8 * f, size * 0.8 * f, this.c.setScalar(f));
+    set.get('sphere', 'ember', false).push(x, y + size * 0.3, z, 0, size, size * 0.7, size, this.c.setScalar(0.5 * f));
+    set.get('pg:card', 'pool', false).push(x, 0.035, z, 0, pool * 2 * f, 1, pool * 2 * f, this.c.copy(FIRE).multiplyScalar(0.8 * f));
+  }
+
   /** Remembers where towers last fired so aiming towers face their targets. */
   noteFire(towerId: number, dx: number, dy: number) {
-    this.aim.set(towerId, Math.atan2(dx, dy));
+    // Lane rows run toward −z, so a lane-space direction (dx, dy) faces world (dx, −dy).
+    this.aim.set(towerId, Math.atan2(dx, -dy));
   }
 
   /**
@@ -109,10 +117,11 @@ export class Actors {
 
   sync(s: GameState, alpha: number, time: number, camQuat: Quaternion, dt: number) {
     // Re-read colours when they change (e.g. a multiplayer snapshot replaces the lobby's placeholder realm).
+    // Heraldry is muted and darkened to sit in the bleak world; enough remains to tell houses apart.
     const key = s.players.map((p) => p.colour).join();
     if (key !== this.housesKey) {
       this.housesKey = key;
-      this.houses = s.players.map((p) => new Color(p.colour));
+      this.houses = s.players.map((p) => new Color(p.colour).lerp(new Color('#505050'), 0.3).multiplyScalar(0.8));
     }
 
     // Towers.
@@ -125,17 +134,12 @@ export class Actors {
       const yaw = AIMING.has(t.kind) ? (this.aim.get(t.id) ?? 0) : 0;
       const tx = toWorldX(t.lane, t.x + 0.5);
       const tz = toWorldZ(t.y + 0.5);
-      const asset = assetsReady() && this.view.detailed ? TOWER_ASSETS[t.kind]?.[t.level] : undefined;
-      if (asset) {
-        const key = `kk:${asset.name}` as GeoKey;
-        const sc = fitWidth(key, asset.width);
-        this.c.setScalar(shade);
-        this.towers.get(key, 'atlas').push(tx, 0, tz, yaw, sc, sc, sc, this.c);
-        // The owner's banner hangs on the face toward the keep.
-        const bh = (assetBounds(key)?.size.y ?? 1.5) * sc;
-        this.towers.get('box', 'cloth', false).push(tx, bh * 0.28, tz + 0.47, 0, 0.32, bh * 0.3, 0.02, this.houses[t.lane]);
-      } else {
-        pushModel(this.towers, TOWER_MODELS[t.kind][t.level], tx, 0, tz, yaw, 1, this.houses[t.lane], shade);
+      const model = TOWER_MODELS[t.kind][t.level];
+      pushModel(this.towers, model, tx, 0, tz, yaw, 1, this.houses[t.lane], shade);
+      // A torch burns on the face toward the plain; its light pools on the ground.
+      if (t.kind !== 'palisade' && this.view.detailed) {
+        const h = topOf(model) * 0.62;
+        this.torch(this.towers, tx + 0.18, h, tz + 0.5, 0.11, t.id, 1.8);
       }
     }
     this.towers.end();
@@ -154,7 +158,7 @@ export class Actors {
       const mx = c.x - c.px;
       const my = c.y - c.py;
       let yaw = this.yaw.get(c.id);
-      const want = mx * mx + my * my > 1e-6 ? Math.atan2(mx, my) : (yaw ?? 0);
+      const want = mx * mx + my * my > 1e-6 ? Math.atan2(mx, -my) : (yaw ?? 0);
       if (yaw === undefined) yaw = want;
       else {
         let dd = want - yaw;
@@ -179,12 +183,24 @@ export class Actors {
         const frame = Math.floor(time * rate + c.id * 0.61) % CHAR_FRAMES;
         const key = `kc:${char.name}:${frame}` as GeoKey;
         const sc = fitHeight(`kc:${char.name}`, char.height);
-        this.c.copy(c.owner < 0 ? WIGHT : this.tmpWhite.lerp(house, 0.22));
+        // Near-silhouettes: the character material is drained and darkened; a hint of house colour remains.
+        this.c.copy(c.owner < 0 ? WIGHT : this.tmpWhite.setScalar(0.85).lerp(house, 0.3));
         this.tmpWhite.set('#ffffff');
         if (shade !== 1) this.c.multiplyScalar(shade);
         this.creeps.get(key, `char:${charTex(key)}`).push(wx, h, wz, yaw, sc, sc, sc, this.c);
         const disc = 0.28 * Math.max(1, char.height);
-        this.creeps.get('cyl').push(wx, 0.015, wz, 0, disc, 0.03, disc, c.owner < 0 ? '#1d2230' : house);
+        this.creeps.get('cyl').push(wx, 0.015, wz, 0, disc, 0.03, disc, c.owner < 0 ? '#14171f' : house);
+        // Every third invader, and every knight and warlord, carries a torch in the right hand.
+        if (c.owner >= 0 && (c.id % 3 === 0 || c.kind === 'knight' || c.kind === 'warlord')) {
+          const rx = -Math.cos(yaw);
+          const rz = Math.sin(yaw);
+          const fx = Math.sin(yaw);
+          const fz = Math.cos(yaw);
+          const hx = wx + rx * 0.22 * char.height + fx * 0.12;
+          const hz = wz + rz * 0.22 * char.height + fz * 0.12;
+          this.creeps.get('cyl').push(hx, char.height * 0.45, hz, 0, 0.035, char.height * 0.42, 0.035, PALETTE.woodDark, 0.25);
+          this.torch(this.creeps, hx, char.height * 0.9, hz, 0.13, c.id, 2.0);
+        }
       } else {
         pushModel(this.creeps, CREEP_MODELS[c.kind], wx, h, wz, yaw, d.size * CREEP_SCALE, house, shade, c.battering ? time * 14 : pace);
       }

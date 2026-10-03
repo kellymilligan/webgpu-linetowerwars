@@ -14,7 +14,7 @@ import {
   Vector3,
   WebGPURenderer,
 } from 'three/webgpu';
-import { float, mix, pass, saturation, screenUV, smoothstep, uniform, vec4 } from 'three/tsl';
+import { float, luminance, mix, mx_noise_float, pass, saturation, screenUV, smoothstep, time, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Controller } from '../app/controller';
@@ -41,13 +41,13 @@ export class SceneView {
   private bloomNode!: ReturnType<typeof bloom>;
   private sun = new DirectionalLight('#ffffff', 3);
   private hemi = new HemisphereLight('#ffffff', '#444444', 1);
-  private light = new LightState(PRESETS.day);
+  private light = new LightState(PRESETS.overcast);
   /** Pins a mood (debug, screenshots); null follows the day cycle. */
   forceMood: Mood | null = null;
   private galleryMode = false;
-  private zenith = uniform(new Color('#5f9be0'));
-  private horizon = uniform(new Color('#cfe4f2'));
-  private saturationU = uniform(1.2);
+  private zenith = uniform(new Color('#353c47'));
+  private horizon = uniform(new Color('#6a717b'));
+  private saturationU = uniform(0.55);
   private tintU = uniform(new Vector3(1, 1, 1));
   private board = new Board();
   private actors = new Actors();
@@ -78,8 +78,8 @@ export class SceneView {
 
     const pmrem = new PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.25;
-    this.scene.fog = new Fog('#b9d3e4', 70, 210);
+    this.scene.environmentIntensity = 0.12;
+    this.scene.fog = new Fog('#555c66', 60, 200);
     // Sky: a vertical gradient from horizon to zenith behind everything.
     this.scene.backgroundNode = mix(this.horizon, this.zenith, smoothstep(0.35, 0.0, screenUV.y));
 
@@ -100,12 +100,15 @@ export class SceneView {
     const scenePass = pass(this.scene, this.rig.camera);
     const colour = scenePass.getTextureNode('output');
     this.bloomNode = bloom(colour, 0.3, 0.4, 0.8);
-    // Grade: saturation and a mood tint, then a soft vignette.
+    // Grade: drained colour and a cold tint, a heavy vignette, and a little film grain for grit.
     const lit = colour.add(this.bloomNode);
-    const graded = saturation(lit.rgb, this.saturationU).mul(this.tintU);
+    // Selective: the dark, cold world is drained; bright highlights (firelight) keep their warmth.
+    const lum = luminance(lit.rgb);
+    const graded = saturation(lit.rgb, mix(this.saturationU, float(1.15), smoothstep(0.2, 0.75, lum))).mul(mix(this.tintU, vec3(1, 1, 1), smoothstep(0.2, 0.75, lum)));
     const d = screenUV.sub(0.5).length();
-    const vignette = mix(float(1), float(0.72), smoothstep(0.45, 0.85, d));
-    this.pipeline.outputNode = vec4(graded.mul(vignette), lit.a);
+    const vignette = mix(float(1), float(0.55), smoothstep(0.35, 0.85, d));
+    const grain = mx_noise_float(vec3(screenUV.mul(vec2(1400, 900)), time.mul(37))).mul(0.03);
+    this.pipeline.outputNode = vec4(graded.mul(vignette).add(grain), lit.a);
     this.resize();
   }
 
@@ -117,7 +120,8 @@ export class SceneView {
   }
 
   focusLane(lane: number, snap = false) {
-    this.rig.focus(laneCentreX(lane), 1);
+    // Frame the canyon with its citadel gate and the face of the range above it.
+    this.rig.focus(laneCentreX(lane), -5);
     if (snap) this.rig.snap();
   }
 
@@ -196,7 +200,6 @@ export class SceneView {
     this.saturationU.value = Lt.saturation;
     this.tintU.value.set(Lt.tint.r, Lt.tint.g, Lt.tint.b);
     this.renderer.toneMappingExposure = Lt.exposure;
-    this.board.grass.value.set(Lt.grass.r, Lt.grass.g, Lt.grass.b);
     setGlow(Lt.glow);
     const ce = Math.cos(Lt.sunElevation);
     const d = 70;
@@ -225,6 +228,7 @@ export class SceneView {
       s.players.map((p) => !p.alive),
       this.time,
       this.light.glow,
+      this.rig.target,
     );
     // Only lanes near the view get drawn; zoomed far out, cheap stand-ins replace detailed models.
     const cam = this.rig;
@@ -232,6 +236,7 @@ export class SceneView {
     this.actors.view.minX = cam.target.x - half;
     this.actors.view.maxX = cam.target.x + half;
     this.actors.view.detailed = cam.distance < 115;
+    this.board.setDetail(cam.distance < 130);
     this.actors.sync(s, alpha, this.time, this.rig.camera.quaternion, dt);
     this.actors.syncGhosts(ctl.ghosts, this.time, s.players[ctl.me]?.colour ?? '#ffffff');
     this.vfx.syncProjectiles(s.projectiles, alpha);
