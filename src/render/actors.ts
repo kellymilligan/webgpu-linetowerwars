@@ -187,7 +187,8 @@ export class Actors {
         this.c.copy(c.owner < 0 ? WIGHT : this.tmpWhite.setScalar(0.85).lerp(house, 0.3));
         this.tmpWhite.set('#ffffff');
         if (shade !== 1) this.c.multiplyScalar(shade);
-        this.creeps.get(key, `char:${charTex(key)}`).push(wx, h, wz, yaw, sc, sc, sc, this.c);
+        // No shadows from characters: from this steep camera they're barely visible, and they're the costliest casters.
+        this.creeps.get(key, `char:${charTex(key)}`, false).push(wx, h, wz, yaw, sc, sc, sc, this.c);
         const disc = 0.28 * Math.max(1, char.height);
         this.creeps.get('cyl').push(wx, 0.015, wz, 0, disc, 0.03, disc, c.owner < 0 ? '#14171f' : house);
         // Every third invader, and every knight and warlord, carries a torch in the right hand.

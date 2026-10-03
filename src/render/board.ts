@@ -1,13 +1,13 @@
 import { BufferAttribute, BufferGeometry, Color, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardNodeMaterial, PlaneGeometry, PointLight, Vector3 } from 'three/webgpu';
-import { float, fract, mix, mx_noise_float, positionWorld, smoothstep, uniform, vec2, vec3 } from 'three/tsl';
-import { LANE_H, LANE_W, MAX_PLAYERS } from '../sim/data/map';
+import { float, fract, mix, positionWorld, smoothstep, uniform, vec3 } from 'three/tsl';
+import { LANE_H, LANE_W } from '../sim/data/map';
 import { Batch } from './batch';
 import { laneCount, laneOriginX, STRIDE, toWorldZ, worldMaxX, worldMinX } from './coords';
 import { BOULDERS, BRUSH_KINDS, DEAD_TREES } from './flora';
 import { fbm, makeNoise, mulberry, smooth } from './noise';
 import { BatchSet, GEO, MATS, PALETTE } from './parts';
 import type { GeoKey } from './parts';
-import { fireLevel } from './rock';
+import { fireLevel, noise4 } from './rock';
 
 /*
  * The Line: a sheer rock range runs across the top of the realm. Each house's
@@ -31,6 +31,8 @@ const LEAN = 0.12;
 const AW = 8.6;
 const AH = 9;
 const RECESS = 3.2;
+/** Real point lights at the gates (the nearest ones get them). */
+const GATE_LIGHTS = 2;
 
 const nWall = makeNoise(5);
 const nTop = makeNoise(9);
@@ -212,11 +214,13 @@ export class Board {
   constructor() {
     const p = positionWorld.xz;
     // Canyon floor: trodden, frozen mud and grit, frost in the ruts, and a faint build grid.
-    const n1 = mx_noise_float(p.mul(0.35)).mul(0.5).add(0.5);
-    const n2 = mx_noise_float(p.mul(1.9)).mul(0.5).add(0.5);
-    const mud = mix(vec3(0.07, 0.066, 0.062), vec3(0.17, 0.158, 0.142), n1.mul(0.6).add(n2.mul(0.4)));
-    const grit = smoothstep(0.6, 0.85, mx_noise_float(p.mul(6.5))).mul(0.06);
-    const frost = smoothstep(0.8, 0.95, mx_noise_float(p.mul(0.7).add(vec2(5, 2))).mul(0.5).add(0.5)).mul(0.35);
+    // Two samples of the baked noise volume: (0.36, 0.72, 1.44, 2.88) and (1.9, 3.8, 7.6, 15) per unit.
+    const pw = vec3(positionWorld.x, 0.37, positionWorld.z);
+    const lo = noise4(pw.mul(0.09));
+    const hi = noise4(pw.mul(0.475));
+    const mud = mix(vec3(0.07, 0.066, 0.062), vec3(0.17, 0.158, 0.142), lo.r.mul(0.6).add(hi.r.mul(0.4)));
+    const grit = smoothstep(0.62, 0.85, hi.b).mul(0.06);
+    const frost = smoothstep(0.7, 0.85, lo.g).mul(0.35);
     const f = fract(p);
     const edge = f.x.min(f.y).min(float(1).sub(f.x)).min(float(1).sub(f.y));
     const line = float(1).sub(smoothstep(0.0, 0.035, edge));
@@ -226,8 +230,8 @@ export class Board {
     const ao = mix(float(0.45), float(1), smoothstep(0.0, 1.8, local).mul(smoothstep(LANE_W, LANE_W - 1.8, local)));
     this.roadMat.colorNode = mix(ground.mul(ao), vec3(0.42, 0.42, 0.4), line.mul(this.gridOpacity));
 
-    for (let i = 0; i < MAX_PLAYERS; i++) {
-      // Firelight spilling from each citadel gate.
+    for (let i = 0; i < GATE_LIGHTS; i++) {
+      // Firelight spilling from the citadel gates nearest the view (each real light costs every lit pixel).
       const l = new PointLight('#ff8a3a', 0, 22, 1.6);
       this.lights.push(l);
       this.group.add(l);
@@ -294,7 +298,7 @@ export class Board {
       }
       xs.push(sign > 0 ? b : a);
       xs.sort((p, q) => p - q);
-      add(heightGrid(xs, flankZ, heightAt));
+      add(heightGrid(xs, flankZ, heightAt), MATS.terrain, false);
     };
     flank(x0, first, 'b');
     flank(last, x1, 'a');
@@ -303,7 +307,8 @@ export class Board {
     const fx: number[] = [];
     for (let x = x0; x < x1; x += x > worldMinX() - 8 && x < worldMaxX() + 8 ? 0.4 : 1.0) fx.push(x);
     fx.push(x1);
-    add(faceGrid(fx, range(-0.6, CLIFF_H, 0.35), cliffZ), MATS.rock);
+    // The sun is always in front of the range, so its shadows would fall behind it, out of view: no casting.
+    add(faceGrid(fx, range(-0.6, CLIFF_H, 0.35), cliffZ), MATS.rock, false);
     const topZ0 = ZC - CLIFF_H * LEAN - 0.6;
     const topXs = range(x0, x1, 1.4);
     const topZs = range(topZ0 - 150, topZ0 + 0.8, 1.5);
@@ -314,13 +319,14 @@ export class Board {
         return CLIFF_H - 0.4 + back * 0.28 * ridge + fbm(nCliff2, x * 0.07, z * 0.07, 3) * 3 * smooth(0, 10, back);
       }),
       MATS.rock,
+      false,
     );
 
     this.buildStatics();
   }
 
   private brushChunk(x: number, z: number): BatchSet {
-    const key = `${Math.floor(x / 20)},${Math.floor(z / 20)}`;
+    const key = `${Math.floor(x / 40)},${Math.floor(z / 40)}`;
     let set = this.brushChunks.get(key);
     if (!set) {
       set = new BatchSet();
@@ -361,7 +367,7 @@ export class Board {
       if (onFloor(x, z) || slope(x, z) > 1.1) return;
       const kind = BRUSH_KINDS[Math.floor(rand() * BRUSH_KINDS.length)];
       const tones = BRUSH_TONES[kind];
-      const s = (1.1 + rand() * 0.9) * scale;
+      const s = (0.8 + rand() * 0.6) * scale;
       this.brushChunk(x, z).get(kind as GeoKey, 'brush', false).push(x, heightAt(x, z) - 0.03, z, rand() * 6.28, s, s * (0.8 + rand() * 0.5), s, tint(tones[Math.floor(rand() * tones.length)]));
     };
     const tree = (x: number, z: number) => {
@@ -506,13 +512,21 @@ export class Board {
       brazier(ox + LANE_W - 1.3, toWorldZ(LANE_H - 0.6), !down, lane * 7 + 2);
       brazier(ox + 0.5, toWorldZ(0.6), !down, lane * 7 + 3);
       brazier(ox + LANE_W - 0.5, toWorldZ(0.6), !down, lane * 7 + 4);
-      // The light from the gate.
-      const L = this.lights[lane];
-      L.position.set(cx, 2.4, Z_END - 1.2);
-      L.intensity = down ? 0 : (34 + Math.sin(time * 9 + lane) * 4 + Math.sin(time * 21 + lane * 3) * 3) * glow;
       if (!down) K.get('pg:card', 'pool', false).push(cx, 0.02, Z_END + 1.5, 0, AW, 1, 7, c.copy(fire).multiplyScalar(0.8));
     }
-    for (let i = this.lanes; i < this.lights.length; i++) this.lights[i].intensity = 0;
+    // Real lights go to the standing gates nearest the view; the rest glow with doorways and pools alone.
+    const near = Array.from({ length: this.lanes }, (_, l) => l)
+      .filter((l) => !fallen[l])
+      .sort((a, b) => Math.abs(laneCx(a) - focus.x) - Math.abs(laneCx(b) - focus.x));
+    this.lights.forEach((L, i) => {
+      const lane = near[i];
+      if (lane === undefined) {
+        L.intensity = 0;
+        return;
+      }
+      L.position.set(laneCx(lane), 2.4, Z_END - 1.2);
+      L.intensity = (34 + Math.sin(time * 9 + lane) * 4 + Math.sin(time * 21 + lane * 3) * 3) * glow;
+    });
     for (const w of this.windows) {
       if (fallen[w.lane]) continue;
       const f = 0.6 + 0.4 * Math.max(0, Math.sin(time * 0.7 + w.x * 3.1 + w.y));

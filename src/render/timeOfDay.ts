@@ -2,11 +2,11 @@ import { Color } from 'three/webgpu';
 import { MUSTER_TIME } from '../sim/data/rules';
 
 /**
- * Lighting moods. A war has one bleak arc and never a bright day: cold
- * overcast at the muster, a bruised dusk as it drags on, and black night for
- * the late game and sudden death. Firelight (gates, braziers, torches) is the
- * only warm colour, and it matters more as the light fails. Each preset is a
- * full grade: sun, sky, fog, bloom and colour grading.
+ * Lighting moods. A war is one long fall into darkness: it opens in a low,
+ * golden late-afternoon sun, greys over, sinks into a bruised dusk, and the
+ * late game and sudden death are fought at night. Firelight (gates, braziers,
+ * torches) matters more as the light fails. Each preset is a full grade: sun,
+ * sky, fog, bloom and colour grading.
  */
 export interface LightPreset {
   sun: string;
@@ -29,9 +29,15 @@ export interface LightPreset {
   tint: string;
 }
 
-export type Mood = 'overcast' | 'dusk' | 'night';
+export type Mood = 'golden' | 'overcast' | 'dusk' | 'night';
 
 export const PRESETS: Record<Mood, LightPreset> = {
+  golden: {
+    sun: '#ffdcae', sunIntensity: 3.0, sunElevation: 0.68, sunAzimuth: 0.9,
+    hemiSky: '#a7b1c0', hemiGround: '#2a2826', hemiIntensity: 1.35,
+    zenith: '#4c5c76', horizon: '#cfb08e', fog: '#8e8c88',
+    exposure: 1.0, glow: 0.65, bloom: 0.3, saturation: 0.72, tint: '#f6f1ea',
+  },
   overcast: {
     sun: '#c3c9d2', sunIntensity: 2.6, sunElevation: 0.45, sunAzimuth: 1.05,
     hemiSky: '#8a94a2', hemiGround: '#1d1e22', hemiIntensity: 1.2,
@@ -39,14 +45,14 @@ export const PRESETS: Record<Mood, LightPreset> = {
     exposure: 0.95, glow: 1.0, bloom: 0.35, saturation: 0.55, tint: '#dfe5ec',
   },
   dusk: {
-    sun: '#9a8c98', sunIntensity: 1.5, sunElevation: 0.25, sunAzimuth: 0.9,
-    hemiSky: '#56607a', hemiGround: '#121317', hemiIntensity: 0.95,
+    sun: '#a093a0', sunIntensity: 1.9, sunElevation: 0.4, sunAzimuth: 0.9,
+    hemiSky: '#66718e', hemiGround: '#1a1b21', hemiIntensity: 1.3,
     zenith: '#1b212c', horizon: '#45414c', fog: '#30333c',
     exposure: 1.0, glow: 1.5, bloom: 0.5, saturation: 0.5, tint: '#d4d9e4',
   },
   night: {
-    sun: '#7a8db5', sunIntensity: 0.8, sunElevation: 0.9, sunAzimuth: -0.4,
-    hemiSky: '#38466b', hemiGround: '#0a0b10', hemiIntensity: 0.9,
+    sun: '#8698c2', sunIntensity: 1.5, sunElevation: 0.9, sunAzimuth: -0.4,
+    hemiSky: '#4a5a86', hemiGround: '#10121a', hemiIntensity: 1.35,
     zenith: '#05070c', horizon: '#141925', fog: '#10141c',
     exposure: 1.15, glow: 2.1, bloom: 0.7, saturation: 0.45, tint: '#c3cbde',
   },
@@ -55,8 +61,9 @@ export const PRESETS: Record<Mood, LightPreset> = {
 /** The mood for a point in the match (seconds since the muster began). */
 export function moodAt(seconds: number): Mood {
   const battle = seconds - MUSTER_TIME;
-  if (battle < 6 * 60) return 'overcast';
-  if (battle < 14 * 60) return 'dusk';
+  if (battle < 5 * 60) return 'golden';
+  if (battle < 11 * 60) return 'overcast';
+  if (battle < 18 * 60) return 'dusk';
   return 'night';
 }
 

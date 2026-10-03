@@ -3,19 +3,19 @@ import { LANE_H } from '../sim/data/map';
 import { worldMaxX, worldMinX } from './coords';
 
 /**
- * A narrow-FOV perspective camera orbiting a ground target, looking up the
- * canyons toward the rock range from just off straight-on (about 12°), so the
- * cliff faces read. Rotation snaps in 90° steps.
+ * A narrow-FOV perspective camera orbiting a ground target: steep (65° down)
+ * so the build grid is easy to read and click, and just off straight-on (8°)
+ * looking up the canyons toward the rock range. Rotation snaps in 90° steps.
  */
 export class CameraRig {
   readonly camera = new PerspectiveCamera(28, 1, 1, 600);
   readonly target = new Vector3(0, 0, 0);
   private goalTarget = new Vector3(0, 0, 0);
-  yaw = 0.21;
-  private goalYaw = 0.21;
-  pitch = 0.7;
-  distance = 84;
-  private goalDistance = 84;
+  yaw = 0.14;
+  private goalYaw = 0.14;
+  pitch = 1.13;
+  distance = 86;
+  private goalDistance = 86;
   private keys = new Set<string>();
   /** Short screen shake, e.g. when your keep is breached. */
   private shake = 0;

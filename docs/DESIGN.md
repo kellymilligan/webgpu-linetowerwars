@@ -86,10 +86,11 @@ and procedural for now, with no stock scenery assets.
 - **Ground:** thick 3D brush (dead grass, heather, bracken) sways in the
   wind on the plateaus and the plain, with boulders and the odd windswept
   dead tree. Canyon floors are frozen mud.
-- **Light:** one bleak arc per war, with no bright day:
-  - cold overcast at the muster;
-  - dusk from 6:00;
-  - night from 14:00.
+- **Light:** one long fall into darkness per war:
+  - low golden late-afternoon sun at the muster;
+  - grey overcast from 5:00;
+  - dusk from 11:00;
+  - night from 18:00, through sudden death.
 - **Firelight** is the only warm colour:
   - gate fires and braziers;
   - a torch on every tower;
@@ -99,8 +100,16 @@ and procedural for now, with no stock scenery assets.
 - **Invaders:** KayKit characters, drained and darkened to near-silhouettes,
   standing on muted house-coloured discs.
 - **Towers:** grey-box, in dark weathered stone and timber.
-- **Camera:** about 12° off straight-on and 40° down, looking up the
-  canyons toward the range.
+- **Camera:** 65° down and about 8° off straight-on, so the build grid is
+  easy to read and click. It looks up the canyons toward the range.
+- **Performance:**
+  - stone shaders sample a baked 3D noise volume rather than computing
+    noise per pixel;
+  - only the 2 gates nearest the view get real lights;
+  - the range and characters cast no shadows;
+  - no environment map;
+  - brush is in culled chunks;
+  - the pixel ratio adapts to hold the frame rate (`?dpr=` pins it).
 
 - **Colours:** creeps wear a hint of their sender's house colour; raiders
   are pale wights from the north.

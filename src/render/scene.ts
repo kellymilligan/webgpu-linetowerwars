@@ -5,7 +5,6 @@ import {
   Fog,
   HemisphereLight,
   PCFShadowMap,
-  PMREMGenerator,
   Plane,
   Raycaster,
   RenderPipeline,
@@ -16,7 +15,6 @@ import {
 } from 'three/webgpu';
 import { float, luminance, mix, mx_noise_float, pass, saturation, screenUV, smoothstep, time, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Controller } from '../app/controller';
 import { towerLevel } from '../sim/data/towers';
 import { cellIndex, tracePath } from '../sim/pathing';
@@ -41,7 +39,7 @@ export class SceneView {
   private bloomNode!: ReturnType<typeof bloom>;
   private sun = new DirectionalLight('#ffffff', 3);
   private hemi = new HemisphereLight('#ffffff', '#444444', 1);
-  private light = new LightState(PRESETS.overcast);
+  private light = new LightState(PRESETS.golden);
   /** Pins a mood (debug, screenshots); null follows the day cycle. */
   forceMood: Mood | null = null;
   private galleryMode = false;
@@ -54,6 +52,8 @@ export class SceneView {
   private vfx = new Vfx();
   private overlays = new Overlays();
   private time = 0;
+  /** Adaptive resolution: the pixel ratio drops when frames are slow and recovers when they're smooth. */
+  private res = { max: 1, min: 1, ratio: 1, fixed: false, ema: 1 / 60, slow: 0, fast: 0, blocked: 0, blockUntil: 0 };
   private raycaster = new Raycaster();
   private groundPlane = new Plane(new Vector3(0, 1, 0), 0);
   private runId = -1;
@@ -70,15 +70,18 @@ export class SceneView {
     const backend = (this.renderer as unknown as { backend: { isWebGPUBackend?: boolean } }).backend;
     this.backend = backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2';
     // `?lite`: half resolution and no shadows, for slow machines and multi-browser tests.
-    const lite = new URLSearchParams(location.search).has('lite');
-    this.renderer.setPixelRatio(lite ? 0.5 : Math.min(window.devicePixelRatio, 2));
+    const params = new URLSearchParams(location.search);
+    const lite = params.has('lite');
+    const pinned = Number(params.get('dpr'));
+    const max = pinned > 0 ? pinned : lite ? 0.5 : Math.min(window.devicePixelRatio, 2);
+    this.res = { ...this.res, max, min: Math.min(max, Math.max(0.5, max * 0.6)), ratio: max, fixed: pinned > 0 || lite };
+    this.renderer.setPixelRatio(max);
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.shadowMap.enabled = !lite;
     this.renderer.shadowMap.type = PCFShadowMap;
 
-    const pmrem = new PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.12;
+    // No environment map: image-based lighting costs every lit pixel and added little under this sky;
+    // the hemisphere light carries the fill.
     this.scene.fog = new Fog('#555c66', 60, 200);
     // Sky: a vertical gradient from horizon to zenith behind everything.
     this.scene.backgroundNode = mix(this.horizon, this.zenith, smoothstep(0.35, 0.0, screenUV.y));
@@ -102,9 +105,11 @@ export class SceneView {
     this.bloomNode = bloom(colour, 0.3, 0.4, 0.8);
     // Grade: drained colour and a cold tint, a heavy vignette, and a little film grain for grit.
     const lit = colour.add(this.bloomNode);
-    // Selective: the dark, cold world is drained; bright highlights (firelight) keep their warmth.
+    // Selective: the world is drained and cooled, but firelight (strongly warm for its brightness) keeps its colour.
     const lum = luminance(lit.rgb);
-    const graded = saturation(lit.rgb, mix(this.saturationU, float(1.15), smoothstep(0.2, 0.75, lum))).mul(mix(this.tintU, vec3(1, 1, 1), smoothstep(0.2, 0.75, lum)));
+    const warmth = lit.r.sub(lit.b).div(lit.r.add(0.02));
+    const keep = smoothstep(0.55, 0.78, warmth).mul(smoothstep(0.04, 0.18, lum)).max(smoothstep(0.6, 1.0, lum));
+    const graded = saturation(lit.rgb, mix(this.saturationU, float(1.05), keep)).mul(mix(this.tintU, vec3(1, 1, 1), keep));
     const d = screenUV.sub(0.5).length();
     const vignette = mix(float(1), float(0.55), smoothstep(0.35, 0.85, d));
     const grain = mx_noise_float(vec3(screenUV.mul(vec2(1400, 900)), time.mul(37))).mul(0.03);
@@ -121,7 +126,7 @@ export class SceneView {
 
   focusLane(lane: number, snap = false) {
     // Frame the canyon with its citadel gate and the face of the range above it.
-    this.rig.focus(laneCentreX(lane), -5);
+    this.rig.focus(laneCentreX(lane), -4.5);
     if (snap) this.rig.snap();
   }
 
@@ -168,8 +173,43 @@ export class SceneView {
     }
   }
 
+  /**
+   * Keeps frame time near the display's: below ~45 fps for 2 s steps the
+   * resolution down; a steady 57+ fps for 6 s steps it back up. It won't
+   * retry a level that was too slow for 30 s, so it doesn't oscillate.
+   * `?dpr=` pins it.
+   */
+  private adaptResolution(dt: number) {
+    const r = this.res;
+    if (r.fixed || dt <= 0) return;
+    r.ema += (dt - r.ema) * 0.05;
+    if (r.ema > 1 / 45) {
+      r.slow += dt;
+      r.fast = 0;
+    } else if (r.ema < 1 / 57) {
+      r.fast += dt;
+      r.slow = 0;
+    } else r.slow = r.fast = 0;
+    let next = r.ratio;
+    if (r.slow > 2 && r.ratio > r.min) {
+      next = Math.max(r.min, r.ratio - 0.25);
+      r.blocked = r.ratio;
+      r.blockUntil = this.time + 30;
+    } else if (r.fast > 6 && r.ratio < r.max && !(this.time < r.blockUntil && r.ratio + 0.25 >= r.blocked)) {
+      next = Math.min(r.max, r.ratio + 0.25);
+    }
+    if (next !== r.ratio) {
+      r.ratio = next;
+      r.slow = r.fast = 0;
+      r.ema = 1 / 60;
+      this.renderer.setPixelRatio(next);
+      this.resize();
+    }
+  }
+
   frame(ctl: Controller, alpha: number, dt: number) {
     this.time += dt;
+    this.adaptResolution(dt);
     const s = ctl.state;
     if (this.galleryMode) ctl.focusRequest = null;
     if (ctl.focusRequest !== null) {
@@ -193,7 +233,7 @@ export class SceneView {
     this.sun.intensity = Lt.sunIntensity;
     this.hemi.color.copy(Lt.hemiSky);
     this.hemi.groundColor.copy(Lt.hemiGround);
-    this.hemi.intensity = Lt.hemiIntensity;
+    this.hemi.intensity = Lt.hemiIntensity * 1.15;
     (this.scene.fog as Fog).color.copy(Lt.fog);
     this.zenith.value.copy(Lt.zenith);
     this.horizon.value.copy(Lt.horizon);
