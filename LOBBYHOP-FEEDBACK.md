@@ -28,7 +28,8 @@ Each item has a severity, what happened, the workaround, and a suggestion.
        out.
      - Nothing documents that the runner needs these classes.
    - **Workaround:** added `lh-panel`, `lh-swatch` and `lh-primary` classes
-     (and `type="text"`) to our Preact lobby.
+     (and `type="text"`) to our Preact lobby. (Siegeline later switched to
+     `mountLobby`, which made this moot.)
    - **Suggestion:** document the selector contract in GUIDE "Real browsers".
      Or fall back to `window.lobbyhop.room.setProfile(...)` and `.start()`
      when `.lh-panel` is absent, or offer `--lobby api`.

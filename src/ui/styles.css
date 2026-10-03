@@ -9,6 +9,14 @@
   --bad: #ff8d7a;
   --radius: 12px;
   --serif: 'Cormorant Garamond', Georgia, serif;
+  /* lobbyhop's war council (mountLobby) in Siegeline's glass. */
+  --lh-bg: var(--glass-strong);
+  --lh-fg: var(--text);
+  --lh-dim: var(--dim);
+  --lh-accent: var(--accent);
+  --lh-accent-fg: #1d160c;
+  --lh-border: var(--line);
+  --lh-radius: var(--radius);
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   font-size: 14px;
   color: var(--text);
@@ -762,103 +770,9 @@ button.on {
   color: var(--dim);
   white-space: nowrap;
 }
-.lobby p {
-  margin: 4px 0 12px;
-}
-.linkrow {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-.lobby input {
-  flex: 1;
-  font: inherit;
-  color: var(--text);
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 7px 10px;
-  min-width: 0;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin-bottom: 12px;
-}
-.swatches {
-  display: flex;
-  gap: 6px;
-}
-.swatch-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid transparent;
-}
-.swatch-btn.on {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
-}
-.swatch-btn:disabled {
-  opacity: 0.18;
-}
-.seats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 12px;
-  margin: 4px 0 6px;
-}
-.seat {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 7px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-.seat .swatch {
-  width: 8px;
-  height: 16px;
-}
-.seat.empty {
-  color: var(--dim);
-  font-style: italic;
-}
-.seat.me {
-  background: rgba(226, 184, 102, 0.1);
-}
-.seat .kick {
-  margin-left: auto;
-  padding: 0 6px;
-  font-size: 11px;
-  line-height: 18px;
-  opacity: 0.45;
-}
-.seat .kick:hover {
-  opacity: 1;
-}
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0 2px;
-  font-size: 13px;
-  cursor: pointer;
-  pointer-events: auto;
-}
-.toggle input {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-  padding: 0;
-}
-.toggle.readonly {
-  color: var(--dim);
-  cursor: default;
-}
-.seat.empty.open {
-  opacity: 0.5;
+
+.lh-panel h2 {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
 }

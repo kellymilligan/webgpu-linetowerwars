@@ -5,6 +5,7 @@ import { SceneView } from './render/scene';
 import { loadAssets } from './render/assets';
 import { createGame, SENDS, TOWER_KINDS } from './sim';
 import { joinRoom, roomFromUrl } from 'lobbyhop/client';
+import { mountLobby } from 'lobbyhop/lobby-ui';
 import { game } from './multiplayer/game';
 import { createBrain } from './sim/bot';
 import type { TowerKind } from './sim';
@@ -32,6 +33,17 @@ async function main() {
     ctl = new Controller(createGame('council', { humans: [] }));
     const joined = joinRoom(game, { room, host: import.meta.env.VITE_ROOM_HOST as string | undefined, profileKey: 'siegeline.profile' });
     ctl.attachNet(joined);
+    mountLobby(joined, {
+      title: 'War council',
+      subtitle: 'Share the link. Each lord holds a lane; send troops at the house on your right.',
+      settings: [{ key: 'fillBots', label: 'Fill empty seats with bot lords', type: 'toggle', hint: 'Off: one holding per lord (a lone lord faces one bot).' }],
+      emptySeat: (s) => (s.fillBots ? 'Bot lord' : 'Open seat'),
+      overText: (r) => {
+        const s = r.state;
+        return s && s.winner !== null ? `House ${s.players[s.winner].name} holds the realm.` : 'The war is over.';
+      },
+      labels: { start: 'Begin the war', waiting: 'Waiting for the host to begin…', rematch: 'Rematch', toLobby: 'Back to the council', openSeat: 'Open seat' },
+    });
     // For lobbyhop's e2e runner and the console.
     (window as unknown as { lobbyhop: unknown }).lobbyhop = { room: joined };
   } else {

@@ -81,7 +81,7 @@ one game definition that wraps the sim.
 | `src/multiplayer/game.ts` | `defineLockstep` definition wrapping `createGame` / `applyCommand` / `step`. Settings (`fillBots`), the `HOUSES` palette, and idle-seat bot takeover via `hooks.idle` / `hooks.return`. |
 | `src/multiplayer/determinism.ts` | Scripted war for the cross-engine check (`recordHashes`). |
 | `src/app/controller.ts` | Bridges the `RoomClient` to the renderer: `advance(dt)`, `submit`, ghosts from `room.pending`, cache reset on `'snapshot'`. |
-| `src/ui/Lobby.tsx` | The war council, rendered from `RoomClient` fields. |
+| `src/main.tsx` | Joins the room and mounts lobbyhop's `mountLobby` (the war council and the game-over rematch panel), themed via `--lh-*` variables in `styles.css`. |
 | `server/index.ts` | Cloudflare Worker: `createRoomServer(game)` as the `Room` Durable Object, plus `createWorker()`. Rooms live at `/rooms/<code>`. |
 | `tests/net.test.ts` | lobbyhop's in-memory harness (see below). |
 | `scripts/e2e-actions.mjs` | What each browser does during `npx lobbyhop e2e`. |
@@ -101,7 +101,7 @@ one game definition that wraps the sim.
   - reconnecting players get a snapshot and rejoin in sync.
 - **`npm run e2e:mp`** (with `npm run server` running) drives 3 headless
   Chromium browsers:
-  1. they join through the war council;
+  1. they join through lobbyhop's lobby (the war council);
   2. the host begins;
   3. they build, send and order ghosts;
   4. lobbyhop pauses and checks every client came to rest on the same tick

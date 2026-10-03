@@ -17,7 +17,6 @@ import {
 import type { GameState } from '../sim';
 import { GLYPH, HOTKEY, mmss, SHORT } from './format';
 import { WorldLayer } from './World';
-import { Lobby } from './Lobby';
 import { newRoomCode } from 'lobbyhop/client';
 
 export function App({ ctl, backend }: { ctl: Controller; backend: string }) {
@@ -25,13 +24,8 @@ export function App({ ctl, backend }: { ctl: Controller; backend: string }) {
   useEffect(() => ctl.subscribe(() => setV(ctl.version)), [ctl]);
   const s = ctl.state;
   if (ctl.net && (!ctl.net.state || ctl.net.phase === 'lobby')) {
-    // The council: just the realm in the background and the lobby.
-    return (
-      <>
-        <Lobby ctl={ctl} />
-        <div class="backend">{backend}</div>
-      </>
-    );
+    // The council: lobbyhop's lobby overlay (mounted in main.tsx) over the realm.
+    return <div class="backend">{backend}</div>;
   }
   return (
     <>
@@ -337,16 +331,8 @@ function GameOver({ ctl, s }: { ctl: Controller; s: GameState }) {
         </table>
         <div class="actions">
           {ctl.net ? (
-            <>
-              {ctl.net.host ? (
-                <button class="primary" onClick={() => ctl.net!.toLobby()}>
-                  Back to the council
-                </button>
-              ) : (
-                <span class="dim">Waiting for the host…</span>
-              )}
-              <button onClick={() => (location.search = '')}>Leave</button>
-            </>
+            // Rematch, back to the council and leave live in lobbyhop's game-over panel.
+            <span class="dim">{ctl.net.host ? 'Call a rematch or return to the council below.' : 'Waiting for the host…'}</span>
           ) : (
             <button class="primary" onClick={() => ctl.newGame()}>
               New war
